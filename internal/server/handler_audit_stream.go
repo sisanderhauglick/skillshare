@@ -24,7 +24,7 @@ func (s *Server) handleAuditStream(w http.ResponseWriter, r *http.Request) {
 	policy := s.auditPolicy()
 
 	// 1. Discover skills
-	skills, err := discoverAuditSkills(s.cfg.Source)
+	skills, err := s.discoverAuditSkills(s.cfg.Source)
 	if err != nil {
 		safeSend("error", map[string]string{"error": err.Error()})
 		return

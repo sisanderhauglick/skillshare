@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"skillshare/internal/audit"
-	"skillshare/internal/sync"
 	"skillshare/internal/utils"
 )
 
@@ -68,8 +67,8 @@ type skillEntry struct {
 }
 
 // discoverAuditSkills discovers and deduplicates skills for audit scanning.
-func discoverAuditSkills(source string) ([]skillEntry, error) {
-	discovered, err := sync.DiscoverSourceSkills(source)
+func (s *Server) discoverAuditSkills(source string) ([]skillEntry, error) {
+	discovered, err := s.cache.Discover(source)
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +252,7 @@ func (s *Server) handleAuditAll(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	policy := s.auditPolicy()
 
-	skills, err := discoverAuditSkills(s.cfg.Source)
+	skills, err := s.discoverAuditSkills(s.cfg.Source)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
