@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"skillshare/internal/backup"
+	"skillshare/internal/cache"
 	"skillshare/internal/config"
 	"skillshare/internal/install"
 	"skillshare/internal/sync"
@@ -94,6 +95,7 @@ func cmdDoctorGlobal() error {
 	runDoctorChecks(cfg, result, false)
 	checkBackupStatus(false, backup.BackupDir())
 	checkTrashStatus(trash.TrashDir())
+	checkCacheStatus()
 	checkVersionDoctor(cfg)
 	printUpdateAvailable(<-updateCh)
 	printDoctorSummary(result)
@@ -131,6 +133,7 @@ func cmdDoctorProject(root string) error {
 	runDoctorChecks(cfg, result, true)
 	checkBackupStatus(true, "")
 	checkTrashStatus(trash.ProjectTrashDir(root))
+	checkCacheStatus()
 	checkVersionDoctor(cfg)
 	printUpdateAvailable(<-updateCh)
 	printDoctorSummary(result)
@@ -801,6 +804,47 @@ func checkTrashStatus(trashBase string) {
 	} else {
 		ui.Info("Trash: %d item(s) (%s), oldest <1 day", len(items), sizeStr)
 	}
+}
+
+// checkCacheStatus shows a one-line cache summary (discovery + UI).
+// Cache is per-machine (not mode-specific), so both global and project call this.
+func checkCacheStatus() {
+	cacheDir := config.CacheDir()
+	items := cache.ListDiskCaches(cacheDir)
+	uiVersions := listUIVersions(cacheDir)
+
+	if len(items) == 0 && len(uiVersions) == 0 {
+		ui.Info("Cache: empty")
+		return
+	}
+
+	var parts []string
+
+	if len(items) > 0 {
+		var totalSize int64
+		orphanCount := 0
+		for _, item := range items {
+			totalSize += item.Size
+			if item.Orphan {
+				orphanCount++
+			}
+		}
+		s := fmt.Sprintf("%d discovery file(s) (%s)", len(items), formatBytes(totalSize))
+		if orphanCount > 0 {
+			s += fmt.Sprintf(", %d orphan", orphanCount)
+		}
+		parts = append(parts, s)
+	}
+
+	if len(uiVersions) > 0 {
+		// Show the first (usually only) UI version with size
+		v := uiVersions[0]
+		parts = append(parts, fmt.Sprintf("UI %s (%s)", v.name, formatBytes(v.size)))
+	} else {
+		parts = append(parts, "no UI cache")
+	}
+
+	ui.Info("Cache: %s", strings.Join(parts, " · "))
 }
 
 // formatBytes formats bytes into a human-readable string.

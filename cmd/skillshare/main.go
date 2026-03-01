@@ -47,6 +47,7 @@ var commands = map[string]func([]string) error{
 	"log":       cmdLog,
 	"ui":        cmdUI,
 	"tui":       cmdTUIToggle,
+	"cache":     cmdCache,
 }
 
 func main() {
@@ -238,6 +239,8 @@ func printUsage() {
 	cmd("log", "", "View operation log")
 	cmd("tui", "[on|off]", "Toggle interactive TUI mode")
 	cmd("ui", "", "Launch web dashboard")
+	cmd("cache", "list", "List cache entries and status")
+	cmd("cache", "clean", "Remove all cached data")
 	cmd("doctor", "", "Check environment and diagnose issues")
 	cmd("version", "", "Show version")
 	cmd("help", "", "Show this help")
