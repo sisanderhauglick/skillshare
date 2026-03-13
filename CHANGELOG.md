@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.17.1] - 2026-03-13
+
+### New Features
+
+#### Web UI Theme System
+
+- **Multi-theme support** — the web dashboard now offers two visual styles and three color modes, switchable via the **Theme** button in the sidebar:
+  - **Styles**: `Clean` (professional, minimal) and `Playful` (hand-drawn borders, organic shapes)
+  - **Modes**: `Light`, `Dark`, and `System` (follows OS preference)
+  - Preferences persist in localStorage across sessions. Default: Playful + Light
+
+#### Init Source Subdirectory
+
+- **Subdirectory prompt during init** — `skillshare init` now prompts whether to store skills in a subdirectory instead of the repository root. Useful when embedding skills inside a dotfiles or monorepo:
+  ```bash
+  skillshare init --remote git@github.com:you/dotfiles.git --subdir skills
+  ```
+  This sets the source path to `~/.config/skillshare/skills/skills/`, keeping the repo root free for README, CI config, and other non-skill files
+
+### Bug Fixes
+
+- **Collect skips `.git/` directories** — `skillshare collect` now excludes `.git/` when copying skills from target to source. Previously, collecting a git-cloned repo (e.g., `obra/superpowers` in `~/.cursor/skills/`) could produce only empty directories because `filepath.Walk` would abort on `.git/` pack files
+- **Actionable git error messages** — `skillshare install` and `skillshare update` now show context-specific guidance instead of raw exit codes when git operations fail:
+  - Authentication failures suggest token env vars (`GITHUB_TOKEN`, `GITLAB_TOKEN`, etc.), SSH URLs, or `gh auth login`
+  - SSL certificate errors suggest custom CA bundle, SSH, or `GIT_SSL_NO_VERIFY`
+  - Token rejections distinguish between missing auth and expired/invalid tokens
+  - Divergent branch conflicts show the `fatal:` line instead of just `exit status 128`
+
 ## [0.17.0] - 2026-03-11
 
 ### Breaking Changes

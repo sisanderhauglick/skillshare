@@ -70,7 +70,7 @@ skillshare collect --all
 ```
 
 **What happens:**
-1. Local skills (non-symlinked) are copied to source
+1. Local skills (non-symlinked) are copied to source (`.git/` directories are excluded)
 2. Original files are replaced with symlinks
 3. Duplicates are detected and reported
 

@@ -176,6 +176,24 @@ skillshare install <source> --update
 skillshare install <source> --force
 ```
 
+### `git failed (exit 128): repository not found or authentication required`
+
+**Cause:** The repository URL is wrong, the repo doesn't exist, or authentication is missing.
+
+skillshare now provides actionable error messages for common git failures instead of raw exit codes. The error message includes suggestions:
+
+```
+Error: git failed (exit 128): repository not found or authentication required
+```
+
+If a token was used but rejected:
+
+```
+Error: git failed (exit 128): authentication token was rejected — check permissions and expiry
+```
+
+**Solution:** See the authentication options below.
+
 ### `Authentication failed` / `Access denied`
 
 **Cause:** HTTPS credentials are missing, expired, or wrong token type.
@@ -260,6 +278,28 @@ See [Environment Variables — Git SSL / TLS](/docs/reference/appendix/environme
 **Cause:** The source doesn't have a valid SKILL.md file.
 
 **Solution:** Check the source path is correct and points to a skill directory.
+
+---
+
+## Update Errors
+
+### `git failed: Need to specify how to reconcile divergent branches`
+
+**Cause:** The remote branch has diverged from your local tracked copy.
+
+**Solution:**
+```bash
+# Force update (replaces local with remote)
+skillshare update --force
+
+# Or manually resolve
+cd ~/.config/skillshare/skills/_repo-name
+git pull --rebase
+```
+
+:::tip
+`skillshare update` and `skillshare install` now show actionable error messages for git failures (authentication, SSL, divergent branches) instead of raw exit codes.
+:::
 
 ---
 

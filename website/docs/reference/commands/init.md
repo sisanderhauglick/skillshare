@@ -27,9 +27,10 @@ flowchart TD
     S2["2. Auto-detect AI CLIs"]
     S3["3. Initialize git"]
     S4["4. Set up remote"]
-    S5["5. Create config.yaml"]
-    S6["6. Built-in skill"]
-    TITLE --> S1 --> S2 --> S3 --> S4 --> S5 --> S6
+    S4b["5. Subdirectory prompt"]
+    S5["6. Create config.yaml"]
+    S6["7. Built-in skill"]
+    TITLE --> S1 --> S2 --> S3 --> S4 --> S4b --> S5 --> S6
 ```
 
 :::info Universal target
@@ -117,6 +118,7 @@ If you run `skillshare init` on an already-initialized setup without `--discover
 | `--no-skill` | Skip built-in skill installation |
 | `--discover, -d` | Detect and add new AI CLI targets to existing config |
 | `--select <list>` | Comma-separated targets to add (requires `--discover`) |
+| `--subdir <name>` | Use a subdirectory as the source path (e.g. `skills`) |
 | `--dry-run, -n` | Preview without changes |
 
 `init` sets your starting mode policy. You can always fine-tune per target later:
@@ -124,6 +126,35 @@ If you run `skillshare init` on an already-initialized setup without `--discover
 ```bash
 skillshare target cursor --mode copy
 skillshare sync
+```
+
+## Source Subdirectory
+
+By default, `init --remote` treats the entire git repo root as the skills source. If your repo also contains non-skill files (README, CI config, dotfiles, etc.), you can store skills in a subdirectory instead:
+
+```
+# Without --subdir: repo root = source (all files are skills)
+~/.config/skillshare/skills/          ← git repo root = source
+  ├── my-skill/
+  └── another-skill/
+
+# With --subdir skills: source points to a subdirectory
+~/.config/skillshare/skills/          ← git repo root
+  ├── README.md
+  ├── .github/
+  └── skills/                         ← source points here
+      ├── my-skill/
+      └── another-skill/
+```
+
+Typical use case: embedding skills inside an existing dotfiles or monorepo instead of a dedicated skills-only repo.
+
+```bash
+# Interactive: prompts during init
+skillshare init --remote git@github.com:you/dotfiles.git
+
+# Non-interactive: specify directly
+skillshare init --remote git@github.com:you/dotfiles.git --subdir skills
 ```
 
 ## Common Scenarios

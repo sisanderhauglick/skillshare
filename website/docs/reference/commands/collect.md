@@ -32,6 +32,10 @@ flowchart TD
     CMD --> FIND --> CONFIRM --> COPY --> SYMLINK
 ```
 
+:::tip
+`.git/` directories are automatically excluded during collection. If you've git-cloned a skill repo directly into a target directory, only the skill content is copied — repository metadata stays behind.
+:::
+
 ## Options
 
 | Flag | Description |

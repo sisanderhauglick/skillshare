@@ -162,7 +162,7 @@ skillshare collect claude
 
 Collects local skills from a target back to source:
 1. Finds non-symlinked skills in target
-2. Copies them to source
+2. Copies them to source (`.git/` directories are excluded automatically)
 3. Replaces with symlinks
 
 ---
