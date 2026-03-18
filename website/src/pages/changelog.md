@@ -110,6 +110,10 @@ All notable changes to skillshare are documented here. For the full commit histo
   ```
   The top-level `targets:` format continues to work. If both are present, `metadata.targets` takes priority. This is a backward-compatible change — existing skills require no modification
 
+#### New Target: Hermes Agent
+
+- **Hermes Agent** — [Nous Research](https://hermes-agent.nousresearch.com/)'s CLI is now a built-in target (56+ total). Global: `~/.hermes/skills`, Project: `.hermes/skills`
+
 ## [0.17.4] - 2026-03-17
 
 ### New Features

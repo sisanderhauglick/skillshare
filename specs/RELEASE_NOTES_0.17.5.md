@@ -14,6 +14,7 @@ v0.17.5 adds **fail-fast config validation**, **sync safety**, **reverse proxy s
 6. **Skill Design Patterns** — `skillshare new` now offers an interactive wizard with five design pattern templates (tool-wrapper, generator, reviewer, inversion, pipeline) and category tagging
 7. **`.skillignore.local`** — local-only override file that lets you un-ignore skills blocked by a shared `.skillignore` without modifying the shared file
 8. **`metadata.targets`** — `targets` can now live under a `metadata:` block in SKILL.md, aligning with the 30+ tool ecosystem convention. Top-level `targets:` still works
+9. **Hermes Agent** — new built-in target for Nous Research's Hermes Agent CLI (56+ total targets)
 
 ---
 
@@ -227,3 +228,20 @@ The top-level `targets:` format continues to work unchanged. If both are present
 - **`metadata` wins on conflict** — if a SKILL.md has both `targets:` and `metadata.targets:`, the metadata version takes priority. This encourages migration toward the ecosystem convention
 - **Other parse functions untouched** — `ParseFrontmatterField` and `ParseFrontmatterFields` intentionally do not gain metadata awareness yet. This will be addressed when more fields move to `metadata:` (e.g., `argument-hint`)
 - **No built-in skill changes** — the built-in skillshare skill doesn't use `targets`, so no migration was needed
+
+---
+
+## New Target: Hermes Agent
+
+**Hermes Agent** (by [Nous Research](https://hermes-agent.nousresearch.com/)) is now a built-in target, bringing the total to **56+ supported AI CLIs**.
+
+```bash
+skillshare init          # auto-detects ~/.hermes if present
+skillshare sync          # syncs skills to ~/.hermes/skills
+```
+
+| | Path |
+|--|------|
+| Global | `~/.hermes/skills` |
+| Project | `.hermes/skills` |
+| Alias | `hermes-agent` |
