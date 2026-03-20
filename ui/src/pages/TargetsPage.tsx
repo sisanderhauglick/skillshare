@@ -401,7 +401,7 @@ export default function TargetsPage() {
                 </div>
                 {/* Filter summary line */}
                 {(target.mode === 'merge' || target.mode === 'copy') && (
-                  <div className="mt-3 flex items-center gap-2 flex-wrap">
+                  <div {...(i === 0 ? { 'data-tour': 'skill-filters' } : {})} className="mt-3 flex items-center gap-2 flex-wrap">
                     <span className="text-sm text-pencil-light">
                       {(() => {
                         const summary = getTargetSummary(target.name);
