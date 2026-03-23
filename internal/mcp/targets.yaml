@@ -1,0 +1,18 @@
+targets:
+  - name: claude
+    global_config: "~/.claude.json"
+    project_config: ".mcp.json"
+    key: mcpServers
+    format: json
+    shared: true
+  - name: cursor
+    global_config: "~/.cursor/mcp.json"
+    project_config: ".cursor/mcp.json"
+    key: mcpServers
+    format: json
+  - name: codex
+    global_config: "~/.codex/config.toml"
+    project_config: ".codex/config.toml"
+    key: mcp_servers
+    format: toml
+    shared: true
