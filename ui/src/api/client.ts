@@ -87,10 +87,19 @@ export interface MCPTargetStatus {
   servers?: string[];
 }
 
+export interface MCPCustomTarget {
+  global_config: string;
+  project_config: string;
+  key: string;
+  format: string;
+  shared?: boolean;
+}
+
 export interface MCPListResponse {
   servers: Record<string, MCPServer>;
   targets: MCPTargetStatus[];
   mcp_mode: string;
+  custom_targets?: Record<string, MCPCustomTarget>;
 }
 
 export interface MCPSyncResult {
@@ -398,6 +407,20 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ mode }),
     }),
+  createMCPTarget: (data: {
+    name: string;
+    global_config?: string;
+    project_config?: string;
+    key?: string;
+    format?: string;
+    shared?: boolean;
+  }) =>
+    apiFetch<{ success: boolean }>('/mcp/targets', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  deleteMCPTarget: (name: string) =>
+    apiFetch<{ success: boolean }>(`/mcp/targets/${encodeURIComponent(name)}`, { method: 'DELETE' }),
 
   // Extras
   listExtras: () => apiFetch<{ extras: Extra[] }>('/extras'),

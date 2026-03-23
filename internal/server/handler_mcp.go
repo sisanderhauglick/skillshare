@@ -83,9 +83,10 @@ func (s *Server) handleMCPList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, map[string]any{
-		"servers":  cfg.Servers,
-		"targets":  targetStatuses,
-		"mcp_mode": mcpMode,
+		"servers":        cfg.Servers,
+		"targets":        targetStatuses,
+		"mcp_mode":       mcpMode,
+		"custom_targets": cfg.Targets,
 	})
 }
 
@@ -241,6 +242,127 @@ func (s *Server) handleMCPUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.writeOpsLog("mcp-update", "ok", start, map[string]any{
+		"name":  name,
+		"scope": "ui",
+	}, "")
+
+	writeJSON(w, map[string]any{"success": true, "name": name})
+}
+
+// handleMCPCreateTarget — POST /api/mcp/targets
+func (s *Server) handleMCPCreateTarget(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+
+	var body struct {
+		Name          string `json:"name"`
+		GlobalConfig  string `json:"global_config"`
+		ProjectConfig string `json:"project_config"`
+		Key           string `json:"key"`
+		Format        string `json:"format"`
+		Shared        bool   `json:"shared"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	if body.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	if body.GlobalConfig == "" && body.ProjectConfig == "" {
+		writeError(w, http.StatusBadRequest, "at least one of global_config or project_config is required")
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	mcpCfgPath := s.mcpConfigPath()
+
+	cfg, err := mcp.LoadMCPConfig(mcpCfgPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load mcp config: "+err.Error())
+		return
+	}
+
+	if _, exists := cfg.Targets[body.Name]; exists {
+		writeError(w, http.StatusConflict, "target already exists: "+body.Name)
+		return
+	}
+
+	format := body.Format
+	if format == "" {
+		format = "json"
+	}
+	key := body.Key
+	if key == "" {
+		key = "mcpServers"
+	}
+
+	cfg.Targets[body.Name] = mcp.MCPCustomTarget{
+		GlobalConfig:  body.GlobalConfig,
+		ProjectConfig: body.ProjectConfig,
+		Key:           key,
+		Format:        format,
+		Shared:        body.Shared,
+	}
+
+	if err := cfg.Save(mcpCfgPath); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save mcp config: "+err.Error())
+		return
+	}
+
+	s.writeOpsLog("mcp-create-target", "ok", start, map[string]any{
+		"name":  body.Name,
+		"scope": "ui",
+	}, "")
+
+	writeJSON(w, map[string]any{"success": true, "name": body.Name})
+}
+
+// builtinMCPTargets lists the names of targets that ship with skillshare and
+// must not be deleted via the API.
+var builtinMCPTargets = map[string]bool{
+	"claude": true,
+	"cursor": true,
+	"codex":  true,
+}
+
+// handleMCPDeleteTarget — DELETE /api/mcp/targets/{name}
+func (s *Server) handleMCPDeleteTarget(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	name := r.PathValue("name")
+
+	if builtinMCPTargets[name] {
+		writeError(w, http.StatusForbidden, "cannot delete builtin target: "+name)
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	mcpCfgPath := s.mcpConfigPath()
+
+	cfg, err := mcp.LoadMCPConfig(mcpCfgPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load mcp config: "+err.Error())
+		return
+	}
+
+	if _, exists := cfg.Targets[name]; !exists {
+		writeError(w, http.StatusNotFound, "custom target not found: "+name)
+		return
+	}
+
+	delete(cfg.Targets, name)
+
+	if err := cfg.Save(mcpCfgPath); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save mcp config: "+err.Error())
+		return
+	}
+
+	s.writeOpsLog("mcp-delete-target", "ok", start, map[string]any{
 		"name":  name,
 		"scope": "ui",
 	}, "")

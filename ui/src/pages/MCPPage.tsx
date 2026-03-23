@@ -13,7 +13,7 @@ import {
   Server,
 } from 'lucide-react';
 import { api } from '../api/client';
-import type { MCPServer, MCPTargetStatus, MCPSyncResult } from '../api/client';
+import type { MCPServer, MCPTargetStatus, MCPCustomTarget, MCPSyncResult } from '../api/client';
 import { queryKeys, staleTimes } from '../lib/queryKeys';
 import { useToast } from '../components/Toast';
 import Card from '../components/Card';
@@ -254,6 +254,133 @@ function AddMCPServerModal({
   );
 }
 
+// ─── AddMCPTargetModal ────────────────────────────────────────────────────────
+
+function AddMCPTargetModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const { toast } = useToast();
+  const [name, setName] = useState('');
+  const [globalConfig, setGlobalConfig] = useState('');
+  const [projectConfig, setProjectConfig] = useState('');
+  const [format, setFormat] = useState<'json' | 'toml'>('json');
+  const [key, setKey] = useState('mcpServers');
+  const [saving, setSaving] = useState(false);
+
+  const handleCreate = async () => {
+    if (!name.trim()) {
+      toast('Name is required', 'error');
+      return;
+    }
+    if (!globalConfig.trim() && !projectConfig.trim()) {
+      toast('At least one of global config path or project config path is required', 'error');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await api.createMCPTarget({
+        name: name.trim(),
+        global_config: globalConfig.trim() || undefined,
+        project_config: projectConfig.trim() || undefined,
+        key: key.trim() || 'mcpServers',
+        format,
+      });
+      toast(`Custom target "${name.trim()}" added`, 'success');
+      onCreated();
+    } catch (err: any) {
+      toast(err.message ?? 'Failed to add target', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <DialogShell open={true} onClose={onClose} maxWidth="2xl" preventClose={saving}>
+      <Card overflow className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-bold text-pencil">Add Custom Target</h3>
+          <IconButton
+            icon={<X size={20} strokeWidth={2.5} />}
+            label="Close"
+            size="sm"
+            variant="ghost"
+            onClick={onClose}
+            disabled={saving}
+          />
+        </div>
+
+        <div className="space-y-4">
+          <Input
+            label="Name"
+            placeholder="e.g. my-tool"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={saving}
+          />
+          <Input
+            label="Global Config Path"
+            placeholder="e.g. ~/.my-tool/mcp.json"
+            value={globalConfig}
+            onChange={(e) => setGlobalConfig(e.target.value)}
+            disabled={saving}
+          />
+          <Input
+            label="Project Config Path"
+            placeholder="e.g. .my-tool/mcp.json"
+            value={projectConfig}
+            onChange={(e) => setProjectConfig(e.target.value)}
+            disabled={saving}
+          />
+
+          {/* Format */}
+          <div>
+            <label className="block text-base text-pencil-light mb-2">Format</label>
+            <div className="flex gap-3">
+              {(['json', 'toml'] as const).map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setFormat(f)}
+                  disabled={saving}
+                  className={`px-4 py-2 border-2 rounded-[var(--radius-md)] text-sm font-medium transition-all ${
+                    format === f
+                      ? 'border-pencil text-pencil bg-muted/30'
+                      : 'border-muted text-pencil-light hover:border-muted-dark'
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <Input
+            label="Key"
+            placeholder="mcpServers"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            disabled={saving}
+          />
+        </div>
+
+        <div className="flex gap-3 justify-end mt-6">
+          <Button variant="secondary" size="sm" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button variant="primary" size="sm" onClick={handleCreate} disabled={saving}>
+            {saving ? 'Adding...' : 'Add Target'}
+          </Button>
+        </div>
+      </Card>
+    </DialogShell>
+  );
+}
+
 // ─── ServerCard ───────────────────────────────────────────────────────────────
 
 function ServerCard({
@@ -373,17 +500,41 @@ function statusVariant(status: string): 'success' | 'danger' | 'warning' | 'defa
   return 'default';
 }
 
-function TargetStatusCard({ target }: { target: MCPTargetStatus }) {
+function TargetStatusCard({
+  target,
+  isCustom,
+  onRemove,
+}: {
+  target: MCPTargetStatus;
+  isCustom?: boolean;
+  onRemove?: (name: string) => void;
+}) {
   return (
     <Card>
       <div className="flex items-start justify-between gap-2 mb-2">
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-2 min-w-0 flex-wrap">
           <Server size={14} strokeWidth={2.5} className="text-blue shrink-0" />
           <span className="font-bold text-pencil truncate">{target.name}</span>
+          {isCustom && (
+            <Badge variant="default" size="sm">
+              custom
+            </Badge>
+          )}
         </div>
-        <Badge variant={statusVariant(target.status)} size="sm">
-          {target.status}
-        </Badge>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <Badge variant={statusVariant(target.status)} size="sm">
+            {target.status}
+          </Badge>
+          {isCustom && onRemove && (
+            <IconButton
+              icon={<Trash2 size={13} strokeWidth={2.5} />}
+              label="Remove custom target"
+              size="sm"
+              variant="danger-outline"
+              onClick={() => onRemove(target.name)}
+            />
+          )}
+        </div>
       </div>
       <p className="font-mono text-xs text-muted-dark truncate ml-5 mb-2">{target.config_path}</p>
       {target.servers && target.servers.length > 0 && (
@@ -413,8 +564,11 @@ export default function MCPPage() {
 
   const [activeTab, setActiveTab] = useState<'servers' | 'sync'>('servers');
   const [showAdd, setShowAdd] = useState(false);
+  const [showAddTarget, setShowAddTarget] = useState(false);
   const [removeName, setRemoveName] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [removeTargetName, setRemoveTargetName] = useState<string | null>(null);
+  const [removingTarget, setRemovingTarget] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncResults, setSyncResults] = useState<MCPSyncResult[] | null>(null);
 
@@ -442,6 +596,21 @@ export default function MCPPage() {
     } finally {
       setRemoving(false);
       setRemoveName(null);
+    }
+  };
+
+  const handleRemoveTarget = async () => {
+    if (!removeTargetName) return;
+    setRemovingTarget(true);
+    try {
+      await api.deleteMCPTarget(removeTargetName);
+      toast(`Custom target "${removeTargetName}" removed`, 'success');
+      invalidate();
+    } catch (err: any) {
+      toast(err.message ?? 'Failed to remove target', 'error');
+    } finally {
+      setRemovingTarget(false);
+      setRemoveTargetName(null);
     }
   };
 
@@ -481,6 +650,7 @@ export default function MCPPage() {
   const serverEntries = Object.entries(servers);
   const targets = data?.targets ?? [];
   const mcpMode = data?.mcp_mode ?? '';
+  const customTargets: Record<string, MCPCustomTarget> = data?.custom_targets ?? {};
 
   const tabClass = (tab: 'servers' | 'sync') =>
     `px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
@@ -559,6 +729,13 @@ export default function MCPPage() {
               />
               {syncing ? 'Syncing...' : 'Sync Now'}
             </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowAddTarget(true)}
+            >
+              <Plus size={14} strokeWidth={2.5} /> Add Target
+            </Button>
             <div className="flex items-center gap-2">
               <label className="text-sm text-pencil-light">Mode:</label>
               <select
@@ -617,7 +794,12 @@ export default function MCPPage() {
               </h4>
               <div className="grid gap-4 sm:grid-cols-2">
                 {targets.map((t) => (
-                  <TargetStatusCard key={t.name} target={t} />
+                  <TargetStatusCard
+                    key={t.name}
+                    target={t}
+                    isCustom={t.name in customTargets}
+                    onRemove={setRemoveTargetName}
+                  />
                 ))}
               </div>
             </>
@@ -625,7 +807,7 @@ export default function MCPPage() {
         </>
       )}
 
-      {/* Add Modal */}
+      {/* Add Server Modal */}
       {showAdd && (
         <AddMCPServerModal
           onClose={() => setShowAdd(false)}
@@ -636,7 +818,18 @@ export default function MCPPage() {
         />
       )}
 
-      {/* Remove Confirm */}
+      {/* Add Target Modal */}
+      {showAddTarget && (
+        <AddMCPTargetModal
+          onClose={() => setShowAddTarget(false)}
+          onCreated={() => {
+            invalidate();
+            setShowAddTarget(false);
+          }}
+        />
+      )}
+
+      {/* Remove Server Confirm */}
       <ConfirmDialog
         open={!!removeName}
         title="Remove MCP Server"
@@ -646,6 +839,18 @@ export default function MCPPage() {
         loading={removing}
         onConfirm={handleRemove}
         onCancel={() => setRemoveName(null)}
+      />
+
+      {/* Remove Target Confirm */}
+      <ConfirmDialog
+        open={!!removeTargetName}
+        title="Remove Custom Target"
+        message={`Remove custom target "${removeTargetName}"? This will stop syncing MCP servers to this target.`}
+        confirmText="Remove"
+        variant="danger"
+        loading={removingTarget}
+        onConfirm={handleRemoveTarget}
+        onCancel={() => setRemoveTargetName(null)}
       />
     </div>
   );
