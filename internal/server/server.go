@@ -392,6 +392,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("DELETE /api/mcp/{name}", s.handleMCPDelete)
 	s.mux.HandleFunc("PATCH /api/mcp/{name}", s.handleMCPUpdate)
 	s.mux.HandleFunc("POST /api/mcp/sync", s.handleMCPSync)
+	s.mux.HandleFunc("PATCH /api/mcp/mode", s.handleMCPMode)
 
 	// Git
 	s.mux.HandleFunc("GET /api/git/status", s.handleGitStatus)

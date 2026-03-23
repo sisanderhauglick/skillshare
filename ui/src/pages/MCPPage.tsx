@@ -545,7 +545,7 @@ export default function MCPPage() {
       {/* Sync Status Tab */}
       {activeTab === 'sync' && (
         <>
-          <div className="flex items-center gap-3 mb-6">
+          <div className="flex items-center gap-3 mb-6 flex-wrap">
             <Button
               variant="primary"
               size="sm"
@@ -559,11 +559,25 @@ export default function MCPPage() {
               />
               {syncing ? 'Syncing...' : 'Sync Now'}
             </Button>
-            {mcpMode && (
-              <Badge variant="info" size="md">
-                mode: {mcpMode}
-              </Badge>
-            )}
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-pencil-light">Mode:</label>
+              <select
+                value={mcpMode || 'merge'}
+                onChange={async (e) => {
+                  try {
+                    await api.setMCPMode(e.target.value);
+                    invalidate();
+                  } catch (err: any) {
+                    toast(err.message ?? 'Failed to update mode', 'error');
+                  }
+                }}
+                className="text-sm border border-muted rounded-[var(--radius-sm)] px-2 py-1 bg-surface text-pencil focus:outline-none focus:border-pencil"
+              >
+                <option value="merge">merge</option>
+                <option value="symlink">symlink</option>
+                <option value="copy">copy</option>
+              </select>
+            </div>
           </div>
 
           {/* Sync results (after manual sync) */}

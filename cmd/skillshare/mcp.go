@@ -362,7 +362,15 @@ func cmdMCPStatus(args []string) error {
 	}
 
 	generatedDir := mcp.GeneratedDir(configDir)
-	targets := mcp.MCPTargetsForMode(isProject)
+
+	var mcpConfigPath string
+	if isProject {
+		mcpConfigPath = mcp.ProjectMCPConfigPath(cwd)
+	} else {
+		mcpConfigPath = mcp.MCPConfigPath(configDir)
+	}
+	mcpCfg, _ := mcp.LoadMCPConfig(mcpConfigPath)
+	targets := mcp.MCPTargetsWithCustom(mcpCfg.Targets, isProject)
 
 	var entries []mcpStatusEntry
 

@@ -16,7 +16,17 @@ const mcpConfigHeader = "# Skillshare MCP configuration\n# https://skillshare.ru
 
 // MCPConfig is the user's source of truth for MCP server definitions (mcp.yaml).
 type MCPConfig struct {
-	Servers map[string]MCPServer `yaml:"servers"`
+	Servers map[string]MCPServer       `yaml:"servers"`
+	Targets map[string]MCPCustomTarget `yaml:"targets,omitempty"`
+}
+
+// MCPCustomTarget defines a user-supplied MCP target override or addition.
+type MCPCustomTarget struct {
+	GlobalConfig  string `yaml:"global_config"`
+	ProjectConfig string `yaml:"project_config"`
+	Key           string `yaml:"key"`
+	Format        string `yaml:"format,omitempty"` // "json" or "toml", default "json"
+	Shared        bool   `yaml:"shared,omitempty"`
 }
 
 // MCPServer defines a single MCP server entry.
@@ -61,9 +71,12 @@ func LoadMCPConfig(path string) (*MCPConfig, error) {
 		return nil, fmt.Errorf("parse mcp config: %w", err)
 	}
 
-	// Ensure the map is never nil so callers can safely range over it.
+	// Ensure maps are never nil so callers can safely range over them.
 	if cfg.Servers == nil {
 		cfg.Servers = map[string]MCPServer{}
+	}
+	if cfg.Targets == nil {
+		cfg.Targets = map[string]MCPCustomTarget{}
 	}
 
 	return &cfg, nil

@@ -393,6 +393,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(opts ?? {}),
     }),
+  setMCPMode: (mode: string) =>
+    apiFetch<{ success: boolean; mode: string }>('/mcp/mode', {
+      method: 'PATCH',
+      body: JSON.stringify({ mode }),
+    }),
 
   // Extras
   listExtras: () => apiFetch<{ extras: Extra[] }>('/extras'),

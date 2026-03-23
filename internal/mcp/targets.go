@@ -3,6 +3,7 @@ package mcp
 import (
 	_ "embed"
 	"path/filepath"
+	"sort"
 	gosync "sync"
 
 	"gopkg.in/yaml.v3"
@@ -127,4 +128,65 @@ func MCPTargetsForMode(project bool) []MCPTargetSpec {
 		}
 	}
 	return result
+}
+
+// MCPTargetsWithCustom merges builtin targets with user-defined custom targets.
+// Custom targets with the same name as a builtin override the builtin's config paths.
+func MCPTargetsWithCustom(custom map[string]MCPCustomTarget, project bool) []MCPTargetSpec {
+	builtins := MCPTargetsForMode(project)
+
+	// Build a map for easy lookup and override
+	result := make(map[string]MCPTargetSpec, len(builtins))
+	for _, t := range builtins {
+		result[t.Name] = t
+	}
+
+	// Merge custom targets
+	for name, ct := range custom {
+		spec := MCPTargetSpec{
+			Name:          name,
+			GlobalConfig:  ct.GlobalConfig,
+			ProjectConfig: ct.ProjectConfig,
+			Key:           ct.Key,
+			Format:        ct.Format,
+			Shared:        ct.Shared,
+		}
+		if spec.Format == "" {
+			spec.Format = "json"
+		}
+		if spec.Key == "" {
+			spec.Key = "mcpServers"
+		}
+		// For existing builtin names: fill in missing fields from builtin
+		if existing, ok := result[name]; ok {
+			if spec.GlobalConfig == "" {
+				spec.GlobalConfig = existing.GlobalConfig
+			}
+			if spec.ProjectConfig == "" {
+				spec.ProjectConfig = existing.ProjectConfig
+			}
+			if spec.Key == "mcpServers" && existing.Key != "" {
+				spec.Key = existing.Key
+			}
+			if spec.Format == "json" && existing.Format != "" {
+				spec.Format = existing.Format
+			}
+		}
+		// Only include if applicable to the current mode
+		if project && spec.ProjectConfig != "" {
+			result[name] = spec
+		} else if !project && spec.GlobalConfig != "" {
+			result[name] = spec
+		}
+	}
+
+	// Convert to sorted slice
+	specs := make([]MCPTargetSpec, 0, len(result))
+	for _, s := range result {
+		specs = append(specs, s)
+	}
+	sort.Slice(specs, func(i, j int) bool {
+		return specs[i].Name < specs[j].Name
+	})
+	return specs
 }

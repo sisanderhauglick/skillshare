@@ -89,8 +89,8 @@ func cmdSyncMCP(args []string) error {
 		return err
 	}
 
-	// Get targets for this mode
-	targets := mcp.MCPTargetsForMode(isProject)
+	// Get targets for this mode (including any custom targets from mcp.yaml)
+	targets := mcp.MCPTargetsWithCustom(mcpCfg.Targets, isProject)
 
 	if len(targets) == 0 && !jsonOutput {
 		ui.Info("No MCP targets available for this mode.")

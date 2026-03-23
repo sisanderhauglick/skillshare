@@ -51,7 +51,7 @@ func (s *Server) handleMCPList(w http.ResponseWriter, r *http.Request) {
 	// Only compute target statuses when servers are configured
 	var targetStatuses []targetStatus
 	if len(cfg.Servers) > 0 {
-		targets := mcp.MCPTargetsForMode(projectMode)
+		targets := mcp.MCPTargetsWithCustom(cfg.Targets, projectMode)
 		targetStatuses = make([]targetStatus, 0, len(targets))
 		for _, t := range targets {
 			var targetPath string
@@ -248,6 +248,32 @@ func (s *Server) handleMCPUpdate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"success": true, "name": name})
 }
 
+// handleMCPMode — PATCH /api/mcp/mode
+func (s *Server) handleMCPMode(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Mode string `json:"mode"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if !config.IsValidSyncMode(body.Mode) {
+		writeError(w, http.StatusBadRequest, "invalid mode: must be merge, symlink, or copy")
+		return
+	}
+
+	s.mu.Lock()
+	s.cfg.MCPMode = body.Mode
+	if err := s.saveConfig(); err != nil {
+		s.mu.Unlock()
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.mu.Unlock()
+
+	writeJSON(w, map[string]any{"success": true, "mode": body.Mode})
+}
+
 // handleMCPSync — POST /api/mcp/sync
 func (s *Server) handleMCPSync(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
@@ -290,7 +316,7 @@ func (s *Server) handleMCPSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	targets := mcp.MCPTargetsForMode(projectMode)
+	targets := mcp.MCPTargetsWithCustom(cfg.Targets, projectMode)
 
 	type syncResultEntry struct {
 		Name   string   `json:"name"`
