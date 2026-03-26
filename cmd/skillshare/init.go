@@ -417,7 +417,7 @@ func performFreshInit(opts *initOptions, home string) error {
 	initGitIfNeeded(sourcePath, opts.dryRun, opts.initGit, opts.noGit)
 
 	// Set up git remote for cross-machine sync
-	setupGitRemote(sourcePath, opts.remoteURL, opts.dryRun)
+	remoteHadSkills := setupGitRemote(sourcePath, opts.remoteURL, opts.dryRun)
 
 	// Subdirectory: use --subdir flag or prompt interactively
 	subDir := opts.subdir
@@ -439,7 +439,10 @@ func performFreshInit(opts *initOptions, home string) error {
 	}
 
 	// Install built-in skillshare skill (opt-in)
-	installSkillIfNeeded(sourcePath, opts.dryRun, opts.initSkill, opts.noSkill)
+	// Skip if remote already had skills — user will get them via 'skillshare pull'
+	if !remoteHadSkills {
+		installSkillIfNeeded(sourcePath, opts.dryRun, opts.initSkill, opts.noSkill)
+	}
 
 	// Single initial commit with all source files (.gitignore + skills)
 	if !opts.dryRun && !opts.noGit {
@@ -1056,7 +1059,7 @@ func commitSourceFiles(sourcePath string) error {
 	return nil
 }
 
-func setupGitRemote(sourcePath, remoteURL string, dryRun bool) {
+func setupGitRemote(sourcePath, remoteURL string, dryRun bool) bool {
 	// Check if git is initialized
 	gitDir := filepath.Join(sourcePath, ".git")
 	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
@@ -1064,7 +1067,7 @@ func setupGitRemote(sourcePath, remoteURL string, dryRun bool) {
 			ui.Warning("Git not initialized in source directory")
 			ui.Info("Run: cd %s && git init", sourcePath)
 		}
-		return
+		return false
 	}
 
 	// Check if remote already exists
@@ -1079,17 +1082,16 @@ func setupGitRemote(sourcePath, remoteURL string, dryRun bool) {
 			ui.Warning("Git remote already exists: %s", existingRemote)
 			ui.Info("To change: git remote set-url origin %s", remoteURL)
 		}
-		return
+		return false
 	}
 
 	// If --remote flag provided, use it directly
 	if remoteURL != "" {
 		if dryRun {
 			ui.Info("Would add git remote: %s", remoteURL)
-			return
+			return false
 		}
-		addRemote(sourcePath, remoteURL)
-		return
+		return addRemote(sourcePath, remoteURL)
 	}
 
 	// Prompt user
@@ -1104,7 +1106,7 @@ func setupGitRemote(sourcePath, remoteURL string, dryRun bool) {
 	if input != "y" && input != "yes" {
 		ui.Info("Skipped remote setup")
 		ui.Info("Add later: git remote add origin <url>")
-		return
+		return false
 	}
 
 	fmt.Print("  Remote URL (e.g., git@github.com:user/skills.git): ")
@@ -1113,31 +1115,33 @@ func setupGitRemote(sourcePath, remoteURL string, dryRun bool) {
 
 	if remoteURL == "" {
 		ui.Info("No URL provided, skipped remote setup")
-		return
+		return false
 	}
 
 	if dryRun {
 		ui.Info("Would add git remote: %s", remoteURL)
-		return
+		return false
 	}
 
-	addRemote(sourcePath, remoteURL)
+	return addRemote(sourcePath, remoteURL)
 }
 
-func addRemote(sourcePath, remoteURL string) {
+func addRemote(sourcePath, remoteURL string) bool {
 	cmd := exec.Command("git", "remote", "add", "origin", remoteURL)
 	cmd.Dir = sourcePath
 	if err := cmd.Run(); err != nil {
 		ui.Warning("Failed to add remote: %v", err)
-		return
+		return false
 	}
 
 	ui.Success("Git remote configured: %s", remoteURL)
 
 	// Try to fetch and auto-pull if remote has existing skills
-	if !tryPullAfterRemoteSetup(sourcePath, remoteURL) {
+	hadSkills := tryPullAfterRemoteSetup(sourcePath, remoteURL)
+	if !hadSkills {
 		ui.Info("Push your skills: skillshare push")
 	}
+	return hadSkills
 }
 
 // remoteFetchEnv returns env vars for non-interactive remote checks.
