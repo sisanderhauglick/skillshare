@@ -688,7 +688,7 @@ function SkillTable({
               <tr>
                 <td colSpan={5} className="py-6">
                   <EmptyState
-                    icon={search || lintFilter ? <SearchX size={32} /> : <FileText size={32} />}
+                    icon={search || lintFilter ? SearchX : FileText}
                     title={search || lintFilter ? 'No skills match the current filters' : 'No skills found'}
                     description={search || lintFilter ? 'Try a different search term or clear the filter' : undefined}
                   />
