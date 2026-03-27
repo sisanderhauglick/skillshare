@@ -114,7 +114,7 @@ export default function AnalyzePage() {
     fetchData();
   }, [fetchData]);
 
-  const groups = useMemo(() => (data ? buildGroups(data.targets) : []), [data]);
+  const groups = useMemo(() => (data ? buildGroups(data.targets ?? []) : []), [data]);
 
   const activeGroup = groups[selectedGroupIdx] ?? null;
   const activeTarget = activeGroup?.target ?? null;
@@ -158,7 +158,7 @@ export default function AnalyzePage() {
   }
 
   // Empty
-  if (!data || data.targets.length === 0) {
+  if (!data || !data.targets?.length) {
     return (
       <div className="space-y-6">
         <PageHeader

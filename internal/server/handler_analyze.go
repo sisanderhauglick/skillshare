@@ -49,7 +49,7 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var entries []analyzeTargetResponse
+	entries := make([]analyzeTargetResponse, 0)
 	for name, target := range targets {
 		tMode := target.Mode
 		if tMode == "" {
