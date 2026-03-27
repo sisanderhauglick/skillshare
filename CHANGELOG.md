@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.18.2] - 2026-03-28
+
+### New Features
+
+#### Update Page Improvements
+
+- **Sticky progress bar** — the Update page now shows a real-time progress bar during batch updates with percentage, completed/total count, and ETA. The bar stays pinned to the top while scrolling through the item list
+
+- **Auto-scroll to active item** — during batch updates, the page automatically scrolls to the item currently being updated so you can follow the progress without manual scrolling
+
+- **Purge stale skills** — when a skill fails to update because its subdirectory no longer exists in the repository, a **Purge** button appears instead of Force Retry. Clicking it removes the stale skill from your source directory
+
+#### Analyze & Install UX
+
+- **Install picker improvements** — the skill picker modal in Install and Analyze pages now auto-focuses the search field, shows clearer skill descriptions, and handles keyboard navigation better
+
+- **Tooltip enhancements** — tooltips across the dashboard now follow the cursor and stay within viewport bounds
+
+### Bug Fixes
+
+- Fixed analyze page crash when a target has no skills (null targets array from API)
+- Fixed redundant path line showing in the skill detail dialog on the Analyze page
+- Fixed install source field not clearing after a successful installation
+
 ## [0.18.1] - 2026-03-27
 
 ### New Features
