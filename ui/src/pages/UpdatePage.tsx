@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   RefreshCw, Check, ArrowUpCircle, Loader2, Search,
-  Circle, CheckCircle, XCircle, MinusCircle, ShieldAlert, Zap,
+  Circle, CheckCircle, XCircle, MinusCircle, ShieldAlert, Zap, Trash2,
 } from 'lucide-react';
 import Card from '../components/Card';
 import Button from '../components/Button';
@@ -68,11 +68,24 @@ export default function UpdatePage() {
   const [checkProgress, setCheckProgress] = useState<{ checked: number; total: number } | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const startTimeRef = useRef<number>(0);
+  const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Clean up EventSource on unmount
   useEffect(() => {
     return () => { esRef.current?.close(); };
   }, []);
+
+  // Auto-scroll to the item currently being updated
+  useEffect(() => {
+    if (phase !== 'updating') return;
+    const inProgressItem = itemStatuses.find((s) => s.status === 'in-progress');
+    if (inProgressItem) {
+      const el = itemRefs.current[inProgressItem.name];
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [itemStatuses, phase]);
 
   const runCheck = useCallback(() => {
     esRef.current?.close();
@@ -198,6 +211,7 @@ export default function UpdatePage() {
     const names = items.map((it) => it.name);
 
     setItemStatuses(items);
+    startTimeRef.current = Date.now();
     setPhase('updating');
 
     let resultIndex = 0;
@@ -276,11 +290,30 @@ export default function UpdatePage() {
     );
   };
 
+  const handlePurge = async (name: string) => {
+    setItemStatuses((prev) =>
+      prev.map((s) => s.name === name ? { ...s, status: 'in-progress', message: 'Purging...' } : s)
+    );
+    try {
+      await api.batchUninstall({ names: [name], force: true });
+      setItemStatuses((prev) =>
+        prev.map((s) => s.name === name ? { ...s, status: 'skipped', message: 'Purged' } : s)
+      );
+      queryClient.invalidateQueries({ queryKey: queryKeys.overview });
+      queryClient.invalidateQueries({ queryKey: queryKeys.skills.all });
+    } catch (err) {
+      setItemStatuses((prev) =>
+        prev.map((s) => s.name === name ? { ...s, status: 'error', message: (err as Error).message } : s)
+      );
+    }
+  };
+
   const handleDone = () => {
     setPhase('idle');
     setItemStatuses([]);
     setSelectedRepos(new Set());
     setSelectedSkills(new Set());
+    itemRefs.current = {};
     runCheck(); // Re-check after updates
   };
 
@@ -288,6 +321,7 @@ export default function UpdatePage() {
   const upToDateSkills = data.skills.filter((s) => s.status === 'up_to_date').length;
 
   // Summary counts for results
+  const completedCount = itemStatuses.filter((s) => s.status !== 'pending' && s.status !== 'in-progress').length;
   const successCount = itemStatuses.filter((s) => s.status === 'success').length;
   const skippedCount = itemStatuses.filter((s) => s.status === 'skipped').length;
   const blockedCount = itemStatuses.filter((s) => s.status === 'blocked').length;
@@ -338,39 +372,52 @@ export default function UpdatePage() {
       {/* Update results panel */}
       {phase !== 'idle' && (
         <div className="space-y-4 animate-fade-in">
-          {/* Summary bar */}
-          <Card tilt>
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <div className="flex items-center gap-2 flex-wrap">
-                {phase === 'updating' && (
-                  <span className="flex items-center gap-1.5 text-pencil font-medium">
-                    <Loader2 size={16} className="animate-spin text-blue" />
-                    Updating...
-                  </span>
-                )}
-                {phase === 'done' && (
-                  <>
-                    {successCount > 0 && <Badge variant="success">{successCount} updated</Badge>}
-                    {skippedCount > 0 && <Badge>{skippedCount} skipped</Badge>}
-                    {blockedCount > 0 && <Badge variant="warning">{blockedCount} blocked</Badge>}
-                    {errorCount > 0 && <Badge variant="danger">{errorCount} failed</Badge>}
-                  </>
-                )}
-              </div>
-              {phase === 'done' && (
+          {/* Sticky progress bar during update */}
+          {phase === 'updating' && (
+            <div className="sticky top-0 z-20 bg-paper -mx-4 px-4 md:-mx-8 md:px-8 pt-2 pb-3">
+              <StreamProgressBar
+                count={completedCount}
+                total={itemStatuses.length}
+                startTime={startTimeRef.current}
+                icon={ArrowUpCircle}
+                iconClassName=""
+                labelDiscovering="Starting update..."
+                labelRunning="Updating..."
+                units="items"
+              />
+            </div>
+          )}
+
+          {/* Done summary */}
+          {phase === 'done' && (
+            <Card tilt>
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {successCount > 0 && <Badge variant="success">{successCount} updated</Badge>}
+                  {skippedCount > 0 && <Badge>{skippedCount} skipped</Badge>}
+                  {blockedCount > 0 && <Badge variant="warning">{blockedCount} blocked</Badge>}
+                  {errorCount > 0 && <Badge variant="danger">{errorCount} failed</Badge>}
+                </div>
                 <Button variant="ghost" size="sm" onClick={handleDone}>
                   Done
                 </Button>
-              )}
-            </div>
-          </Card>
+              </div>
+            </Card>
+          )}
 
           {/* Per-item status cards */}
           <div className="space-y-2">
             {itemStatuses.map((item, i) => (
               <div
                 key={item.name}
-                className="flex items-center gap-3 px-3 py-2 border border-muted hover:bg-muted/30 transition-colors animate-fade-in"
+                ref={(el) => { itemRefs.current[item.name] = el; }}
+                className={`flex items-center gap-3 px-3 py-2 border transition-colors animate-fade-in ${
+                  item.status === 'error'
+                    ? 'border-danger/40 bg-danger-light/50'
+                    : item.status === 'blocked'
+                    ? 'border-warning/40 bg-warning-light/50'
+                    : 'border-muted hover:bg-muted/30'
+                }`}
                 style={{
                   borderRadius: radius.sm,
                   animationDelay: `${i * 50}ms`,
@@ -383,7 +430,17 @@ export default function UpdatePage() {
                     {item.name}
                   </span>
                   {item.message && (
-                    <span className={`text-pencil-light text-sm block ${item.status === 'error' ? 'whitespace-pre-wrap' : 'truncate'}`}>{item.message}</span>
+                    <span
+                      className={`text-sm block ${
+                        item.status === 'error'
+                          ? 'text-danger font-medium whitespace-pre-wrap mt-1'
+                          : item.status === 'blocked'
+                          ? 'text-warning whitespace-pre-wrap mt-1'
+                          : 'text-pencil-light truncate'
+                      }`}
+                    >
+                      {item.message}
+                    </span>
                   )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -394,10 +451,17 @@ export default function UpdatePage() {
                     </Badge>
                   )}
                   {item.status === 'error' && phase === 'done' && (
-                    <Button variant="secondary" size="sm" onClick={() => handleRetryForce(item.name)}>
-                      <RefreshCw size={14} />
-                      Force
-                    </Button>
+                    item.message?.includes('does not exist in repository') ? (
+                      <Button variant="danger" size="sm" onClick={() => handlePurge(item.name)}>
+                        <Trash2 size={14} />
+                        Purge
+                      </Button>
+                    ) : (
+                      <Button variant="danger" size="sm" onClick={() => handleRetryForce(item.name)}>
+                        <RefreshCw size={14} />
+                        Force Retry
+                      </Button>
+                    )
                   )}
                   <StatusBadge status={item.status} />
                 </div>
