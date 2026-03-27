@@ -41,6 +41,11 @@ function formatRelativeTime(dateStr: string): string {
   return `${Math.floor(diff / 31536000)}y ago`;
 }
 
+function isStaleError(message?: string): boolean {
+  if (!message) return false;
+  return message.includes('does not exist in repository') || message.includes('not found in repository');
+}
+
 function actionToStatus(action: string): ItemUpdateStatus['status'] {
   switch (action) {
     case 'updated': return 'success';
@@ -247,8 +252,7 @@ export default function UpdatePage() {
       // onDone
       () => {
         setPhase('done');
-        queryClient.invalidateQueries({ queryKey: queryKeys.overview });
-        queryClient.invalidateQueries({ queryKey: queryKeys.skills.all });
+        invalidateSkillData();
       },
       // onError
       (err) => {
@@ -259,52 +263,40 @@ export default function UpdatePage() {
     );
   };
 
+  const patchItem = (name: string, patch: Partial<ItemUpdateStatus>) =>
+    setItemStatuses((prev) => prev.map((s) => s.name === name ? { ...s, ...patch } : s));
+
+  const invalidateSkillData = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.overview });
+    queryClient.invalidateQueries({ queryKey: queryKeys.skills.all });
+  };
+
   const handleRetryForce = (name: string) => {
-    // Mark item as in-progress
-    setItemStatuses((prev) =>
-      prev.map((s) => s.name === name ? { ...s, status: 'in-progress', message: undefined } : s)
-    );
+    patchItem(name, { status: 'in-progress', message: undefined });
 
     api.updateAllStream(
       () => {},
       (item) => {
-        setItemStatuses((prev) =>
-          prev.map((s) => s.name === name ? {
-            ...s,
-            status: actionToStatus(item.action),
-            message: item.message,
-            auditRiskLabel: item.auditRiskLabel,
-          } : s)
-        );
+        patchItem(name, {
+          status: actionToStatus(item.action),
+          message: item.message,
+          auditRiskLabel: item.auditRiskLabel,
+        });
       },
-      () => {
-        queryClient.invalidateQueries({ queryKey: queryKeys.overview });
-        queryClient.invalidateQueries({ queryKey: queryKeys.skills.all });
-      },
-      (err) => {
-        setItemStatuses((prev) =>
-          prev.map((s) => s.name === name ? { ...s, status: 'error', message: err.message } : s)
-        );
-      },
+      () => invalidateSkillData(),
+      (err) => patchItem(name, { status: 'error', message: err.message }),
       { names: [name], force: true },
     );
   };
 
   const handlePurge = async (name: string) => {
-    setItemStatuses((prev) =>
-      prev.map((s) => s.name === name ? { ...s, status: 'in-progress', message: 'Purging...' } : s)
-    );
+    patchItem(name, { status: 'in-progress', message: 'Purging...' });
     try {
       await api.batchUninstall({ names: [name], force: true });
-      setItemStatuses((prev) =>
-        prev.map((s) => s.name === name ? { ...s, status: 'skipped', message: 'Purged' } : s)
-      );
-      queryClient.invalidateQueries({ queryKey: queryKeys.overview });
-      queryClient.invalidateQueries({ queryKey: queryKeys.skills.all });
+      patchItem(name, { status: 'skipped', message: 'Purged' });
+      invalidateSkillData();
     } catch (err) {
-      setItemStatuses((prev) =>
-        prev.map((s) => s.name === name ? { ...s, status: 'error', message: (err as Error).message } : s)
-      );
+      patchItem(name, { status: 'error', message: (err as Error).message });
     }
   };
 
@@ -321,11 +313,11 @@ export default function UpdatePage() {
   const upToDateSkills = data.skills.filter((s) => s.status === 'up_to_date').length;
 
   // Summary counts for results
-  const completedCount = itemStatuses.filter((s) => s.status !== 'pending' && s.status !== 'in-progress').length;
   const successCount = itemStatuses.filter((s) => s.status === 'success').length;
   const skippedCount = itemStatuses.filter((s) => s.status === 'skipped').length;
   const blockedCount = itemStatuses.filter((s) => s.status === 'blocked').length;
   const errorCount = itemStatuses.filter((s) => s.status === 'error').length;
+  const completedCount = successCount + skippedCount + blockedCount + errorCount;
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -451,7 +443,7 @@ export default function UpdatePage() {
                     </Badge>
                   )}
                   {item.status === 'error' && phase === 'done' && (
-                    item.message?.includes('does not exist in repository') ? (
+                    isStaleError(item.message) ? (
                       <Button variant="danger" size="sm" onClick={() => handlePurge(item.name)}>
                         <Trash2 size={14} />
                         Purge
