@@ -382,6 +382,11 @@ export default function TargetsPage() {
                     <p className="font-mono text-sm text-pencil-light truncate">
                       {shortenHome(target.path)}
                     </p>
+                    {target.agentPath && (
+                      <p className="font-mono text-sm text-pencil-light truncate">
+                        agent: {shortenHome(target.agentPath)}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     {(target.mode === 'merge' || target.mode === 'copy') && target.localCount > 0 && (
@@ -430,6 +435,9 @@ export default function TargetsPage() {
                         </span>
                       ) : (
                         <>{target.linkedCount} {target.mode === 'copy' ? 'managed' : 'shared'}, {target.localCount} local</>
+                      )}
+                      {target.agentLinkedCount != null && target.agentLinkedCount > 0 && (
+                        <>, {target.agentLinkedCount} agent{target.agentLinkedCount !== 1 ? 's' : ''}</>
                       )}
                     </span>
                   )}
