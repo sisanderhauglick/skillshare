@@ -32,6 +32,7 @@ import { useToast } from '../components/Toast';
 import { PageSkeleton } from '../components/Skeleton';
 import { Virtuoso } from 'react-virtuoso';
 import { radius } from '../design';
+import KindBadge from '../components/KindBadge';
 
 /* ── Glob → Regex (supports * and ? only) ──────────── */
 
@@ -427,7 +428,10 @@ export default function BatchUninstallPage() {
                     disabled={phase !== 'selecting'}
                   />
                   <div className="flex-1 min-w-0">
-                    <span className="font-mono text-sm text-pencil truncate block">{skill.name}</span>
+                    <span className="font-mono text-sm text-pencil truncate flex items-center gap-1.5">
+                      <KindBadge kind={skill.kind} />
+                      {skill.name}
+                    </span>
                     {skill.relPath !== skill.name && (
                       <span className="text-xs text-pencil-light truncate block">{skill.relPath}</span>
                     )}

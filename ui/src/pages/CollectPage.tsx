@@ -27,6 +27,7 @@ import { api, type CollectScanTarget, type CollectResult } from '../api/client';
 import { queryKeys } from '../lib/queryKeys';
 import { radius, shadows } from '../design';
 import { formatSize } from '../lib/format';
+import KindBadge from '../components/KindBadge';
 
 type Phase = 'idle' | 'scanning' | 'scanned' | 'collecting' | 'done';
 
@@ -415,6 +416,7 @@ function ScanTargetCard({
                   <Checkbox label="" checked={isSelected} onChange={() => onToggle(key)} size="sm" disabled={disabled} />
                 </span>
                 <Folder size={14} strokeWidth={2.5} className="text-warning shrink-0" />
+                {sk.kind && <KindBadge kind={sk.kind} />}
                 <span className="font-mono font-medium text-pencil text-sm">
                   {sk.name}
                 </span>
