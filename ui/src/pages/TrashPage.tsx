@@ -20,6 +20,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import EmptyState from '../components/EmptyState';
 import { PageSkeleton } from '../components/Skeleton';
 import { useToast } from '../components/Toast';
+import KindBadge from '../components/KindBadge';
 
 function timeAgo(dateStr: string): string {
   const now = Date.now();
@@ -240,6 +241,7 @@ function TrashCard({
           <div className="flex items-center gap-2 text-pencil">
             <Trash2 size={16} strokeWidth={2.5} />
             <span className="font-medium">{item.name}</span>
+            <KindBadge kind={item.kind ?? 'skill'} />
             <span className="text-sm text-pencil-light">
               {timeAgo(item.date)}
             </span>

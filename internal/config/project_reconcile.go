@@ -162,6 +162,74 @@ func ReconcileProjectSkills(projectRoot string, projectCfg *ProjectConfig, reg *
 	return nil
 }
 
+// ReconcileProjectAgents scans the project agents source directory for
+// installed agents and ensures they are listed in the registry with kind="agent".
+// Also updates .skillshare/.gitignore for each agent.
+func ReconcileProjectAgents(projectRoot string, reg *Registry, agentsSourcePath string) error {
+	if _, err := os.Stat(agentsSourcePath); os.IsNotExist(err) {
+		return nil
+	}
+
+	entries, err := os.ReadDir(agentsSourcePath)
+	if err != nil {
+		return nil
+	}
+
+	changed := false
+	index := map[string]bool{}
+	for _, s := range reg.Skills {
+		if s.EffectiveKind() == "agent" {
+			index[s.Name] = true
+		}
+	}
+
+	var gitignoreEntries []string
+
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(strings.ToLower(name), ".md") {
+			continue
+		}
+
+		agentName := strings.TrimSuffix(name, ".md")
+
+		// Check for metadata
+		metaPath := filepath.Join(agentsSourcePath, agentName+".skillshare-meta.json")
+		meta, _ := install.ReadMeta(metaPath)
+		if meta == nil || meta.Source == "" {
+			continue // local agent, not installed
+		}
+
+		if !index[agentName] {
+			reg.Skills = append(reg.Skills, SkillEntry{
+				Name:   agentName,
+				Kind:   "agent",
+				Source: meta.Source,
+			})
+			index[agentName] = true
+			changed = true
+		}
+
+		gitignoreEntries = append(gitignoreEntries, filepath.Join("agents", name))
+		// Also ignore the metadata file
+		gitignoreEntries = append(gitignoreEntries, filepath.Join("agents", agentName+".skillshare-meta.json"))
+	}
+
+	if len(gitignoreEntries) > 0 {
+		if err := install.UpdateGitIgnoreBatch(filepath.Join(projectRoot, ".skillshare"), gitignoreEntries); err != nil {
+			return fmt.Errorf("failed to update .skillshare/.gitignore for agents: %w", err)
+		}
+	}
+
+	if changed {
+		if err := reg.Save(filepath.Join(projectRoot, ".skillshare")); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // isGitRepo checks if the given path is a git repository (has .git/ directory or file).
 func isGitRepo(path string) bool {
 	_, err := os.Stat(filepath.Join(path, ".git"))

@@ -128,6 +128,7 @@ func (s *Server) handleGetSkill(w http.ResponseWriter, r *http.Request) {
 	// Snapshot config under RLock, then release before I/O.
 	s.mu.RLock()
 	source := s.cfg.Source
+	agentsSource := s.agentsSource()
 	s.mu.RUnlock()
 
 	name := r.PathValue("name")
@@ -147,6 +148,7 @@ func (s *Server) handleGetSkill(w http.ResponseWriter, r *http.Request) {
 
 		item := skillItem{
 			Name:       baseName,
+			Kind:       "skill",
 			FlatName:   d.FlatName,
 			RelPath:    d.RelPath,
 			SourcePath: d.SourcePath,
@@ -196,6 +198,37 @@ func (s *Server) handleGetSkill(w http.ResponseWriter, r *http.Request) {
 			"files":          files,
 		})
 		return
+	}
+
+	// Fallback: check agents source
+	if agentsSource != "" {
+		agentFile := name + ".md"
+		agentPath := filepath.Join(agentsSource, agentFile)
+		if data, err := os.ReadFile(agentPath); err == nil {
+			item := skillItem{
+				Name:       name,
+				Kind:       "agent",
+				FlatName:   agentFile,
+				RelPath:    agentFile,
+				SourcePath: agentPath,
+			}
+
+			metaPath := filepath.Join(agentsSource, name+".skillshare-meta.json")
+			if meta, _ := install.ReadMeta(metaPath); meta != nil {
+				item.InstalledAt = meta.InstalledAt.Format("2006-01-02T15:04:05Z")
+				item.Source = meta.Source
+				item.Type = meta.Type
+				item.RepoURL = meta.RepoURL
+				item.Version = meta.Version
+			}
+
+			writeJSON(w, map[string]any{
+				"skill":          item,
+				"skillMdContent": string(data),
+				"files":          []string{agentFile},
+			})
+			return
+		}
 	}
 
 	writeError(w, http.StatusNotFound, "skill not found: "+name)
