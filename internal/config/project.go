@@ -182,8 +182,9 @@ func (t *ProjectTargetEntry) EnsureSkills() *ResourceTargetConfig {
 	return t.Skills
 }
 
-// SkillEntry represents a remote skill entry in config (shared by global and project).
-type SkillEntry struct {
+// ResourceEntry represents a remote resource entry in config (shared by global and project).
+// Used for both skills and agents.
+type ResourceEntry struct {
 	Name    string `yaml:"name"`
 	Kind    string `yaml:"kind,omitempty"`
 	Source  string `yaml:"source"`
@@ -192,9 +193,12 @@ type SkillEntry struct {
 	Branch  string `yaml:"branch,omitempty"`
 }
 
+// SkillEntry is an alias for backward compatibility.
+type SkillEntry = ResourceEntry
+
 // EffectiveKind returns the resource kind for this entry.
 // Returns "skill" if Kind is empty (backward compatibility).
-func (s SkillEntry) EffectiveKind() string {
+func (s ResourceEntry) EffectiveKind() string {
 	if s.Kind == "" {
 		return "skill"
 	}
