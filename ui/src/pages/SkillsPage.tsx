@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, forwardRef, memo } from 'react';
+import { useState, useMemo, useCallback, useEffect, forwardRef, memo, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Search,
@@ -12,9 +12,13 @@ import {
   LayoutGrid,
   List,
   Plus,
+  ChevronRight,
+  ChevronDown,
+  ChevronsUpDown,
+  ChevronsDownUp,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { VirtuosoGrid, GroupedVirtuoso } from 'react-virtuoso';
+import { VirtuosoGrid, Virtuoso } from 'react-virtuoso';
 import type { GridComponents } from 'react-virtuoso';
 import { queryKeys, staleTimes } from '../lib/queryKeys';
 import Badge from '../components/Badge';
@@ -31,6 +35,7 @@ import type { Skill } from '../api/client';
 import { radius } from '../design';
 import ScrollToTop from '../components/ScrollToTop';
 import Tooltip from '../components/Tooltip';
+import { parseRemoteURL } from '../lib/parseRemoteURL';
 
 /* -- Sticky-note pastel palette (8 colors) --------- */
 
@@ -52,10 +57,176 @@ function hashToIndex(s: string, len: number): number {
   return ((h % len) + len) % len;
 }
 
-/** Extract owner/repo from a GitHub URL, e.g. "https://github.com/foo/bar" → "foo/bar" */
+/** Extract owner/repo from a git remote URL, fallback to raw string. */
 function shortSource(source: string): string {
-  const m = source.match(/github\.com\/([^/]+\/[^/]+)/);
-  return m ? m[1] : source;
+  return parseRemoteURL(source)?.ownerRepo ?? source;
+}
+
+/* -- Folder tree types & helpers -------------------- */
+
+interface FolderNode {
+  name: string;
+  path: string;
+  children: Map<string, FolderNode>;
+  skills: Skill[];
+  skillCount: number;
+}
+
+interface TreeNode {
+  type: 'folder' | 'skill';
+  name: string;
+  path: string;
+  depth: number;
+  skill?: Skill;
+  childCount: number;
+  isRoot?: boolean;
+}
+
+/** Build a nested folder tree from skills' relPath values. Computes skillCount bottom-up. */
+function buildTree(skills: Skill[]): FolderNode {
+  const root: FolderNode = { name: '', path: '', children: new Map(), skills: [], skillCount: 0 };
+  for (const skill of skills) {
+    const rp = skill.relPath ?? '';
+    const lastSlash = rp.lastIndexOf('/');
+    if (lastSlash <= 0) {
+      root.skills.push(skill);
+      continue;
+    }
+    const dirPath = rp.substring(0, lastSlash);
+    const segments = dirPath.split('/');
+    let node = root;
+    let currentPath = '';
+    for (const seg of segments) {
+      currentPath = currentPath ? `${currentPath}/${seg}` : seg;
+      if (!node.children.has(seg)) {
+        node.children.set(seg, { name: seg, path: currentPath, children: new Map(), skills: [], skillCount: 0 });
+      }
+      node = node.children.get(seg)!;
+    }
+    node.skills.push(skill);
+  }
+  // Compute skillCount bottom-up (O(n) total)
+  function computeCounts(node: FolderNode): number {
+    let count = node.skills.length;
+    for (const child of node.children.values()) count += computeCounts(child);
+    node.skillCount = count;
+    return count;
+  }
+  computeCounts(root);
+  return root;
+}
+
+/** Flatten the tree into a list of TreeNode for virtualized rendering. */
+function flattenTree(
+  root: FolderNode,
+  collapsed: ReadonlySet<string>,
+  isSearching: boolean,
+): TreeNode[] {
+  const result: TreeNode[] = [];
+
+  function walkFolder(node: FolderNode, depth: number) {
+    // Sort child folders alphabetically
+    const sortedChildren = [...node.children.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    for (const [, child] of sortedChildren) {
+      const cc = child.skillCount;
+      if (cc === 0) continue; // skip empty folders (filtered out)
+      result.push({
+        type: 'folder',
+        name: child.name,
+        path: child.path,
+        depth,
+        childCount: cc,
+      });
+      const isCollapsed = !isSearching && collapsed.has(child.path);
+      if (!isCollapsed) {
+        walkFolder(child, depth + 1);
+      }
+    }
+    // Skills directly in this folder
+    for (const skill of node.skills) {
+      result.push({
+        type: 'skill',
+        name: skill.name,
+        path: skill.relPath,
+        depth,
+        skill,
+        childCount: 0,
+      });
+    }
+  }
+
+  // Walk top-level children
+  const sortedChildren = [...root.children.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  for (const [, child] of sortedChildren) {
+    const cc = child.skillCount;
+    if (cc === 0) continue;
+    result.push({
+      type: 'folder',
+      name: child.name,
+      path: child.path,
+      depth: 0,
+      childCount: cc,
+    });
+    const isCollapsed = !isSearching && collapsed.has(child.path);
+    if (!isCollapsed) {
+      walkFolder(child, 1);
+    }
+  }
+
+  // Root-level skills last, under a virtual "(root)" folder
+  if (root.skills.length > 0) {
+    result.push({
+      type: 'folder',
+      name: '(root)',
+      path: '',
+      depth: 0,
+      childCount: root.skills.length,
+      isRoot: true,
+    });
+    const rootCollapsed = !isSearching && collapsed.has('');
+    if (!rootCollapsed) {
+      for (const skill of root.skills) {
+        result.push({
+          type: 'skill',
+          name: skill.name,
+          path: skill.relPath,
+          depth: 1,
+          skill,
+          childCount: 0,
+        });
+      }
+    }
+  }
+
+  return result;
+}
+
+/** Collect all folder paths from a tree (for Expand/Collapse All). */
+function collectAllFolderPaths(root: FolderNode): string[] {
+  const paths: string[] = [];
+  function walk(node: FolderNode) {
+    for (const child of node.children.values()) {
+      paths.push(child.path);
+      walk(child);
+    }
+  }
+  walk(root);
+  if (root.skills.length > 0) paths.push(''); // root virtual folder
+  return paths;
+}
+
+const COLLAPSED_STORAGE_KEY = 'skillshare:folder-collapsed';
+
+function loadCollapsed(): Set<string> {
+  try {
+    const raw = localStorage.getItem(COLLAPSED_STORAGE_KEY);
+    if (raw) return new Set(JSON.parse(raw));
+  } catch { /* ignore corrupt data */ }
+  return new Set();
+}
+
+function saveCollapsed(collapsed: Set<string>) {
+  localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify([...collapsed]));
 }
 
 /* -- Filter, Sort & View types -------------------- */
@@ -236,11 +407,10 @@ export default function SkillsPage() {
 
   const [toolbarH, setToolbarH] = useState(0);
   const toolbarRef = useCallback((node: HTMLDivElement | null) => {
-    if (node) {
-      const ro = new ResizeObserver(() => setToolbarH(node.offsetHeight));
-      ro.observe(node);
-      return () => ro.disconnect();
-    }
+    if (!node) return;
+    const ro = new ResizeObserver(() => setToolbarH(node.offsetHeight));
+    ro.observe(node);
+    return () => ro.disconnect();
   }, []);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<FilterType>('all');
@@ -285,23 +455,6 @@ export default function SkillsPage() {
     );
     return sortSkills(result, sortType);
   }, [skills, search, filterType, sortType]);
-
-  // Group skills by parent directory for grouped view
-  const grouped = useMemo(() => {
-    const groups = new Map<string, Skill[]>();
-    for (const skill of filtered) {
-      const rp = skill.relPath ?? '';
-      const lastSlash = rp.lastIndexOf('/');
-      const dir = lastSlash > 0 ? rp.substring(0, lastSlash) : '';
-      const existing = groups.get(dir) ?? [];
-      existing.push(skill);
-      groups.set(dir, existing);
-    }
-    // Sort directory keys: non-empty alphabetically first, then top-level ""
-    const sortedDirs = [...groups.keys()].filter((k) => k !== '').sort();
-    if (groups.has('')) sortedDirs.push('');
-    return { dirs: sortedDirs, groups };
-  }, [filtered]);
 
   if (isPending) return <PageSkeleton />;
   if (error) {
@@ -391,8 +544,8 @@ export default function SkillsPage() {
         />
       </div>
 
-      {/* Result count — outside sticky toolbar for natural spacing */}
-      {(filterType !== 'all' || search) && (
+      {/* Result count — hidden in folder view (merged into folder toolbar) */}
+      {(filterType !== 'all' || search) && viewType !== 'grouped' && (
         <p className="text-pencil-light text-sm mb-3">
           Showing {filtered.length} of {skills.length} skills
           {filterType !== 'all' && (
@@ -430,7 +583,13 @@ export default function SkillsPage() {
             )}
           />
         ) : viewType === 'grouped' ? (
-          <GroupedView dirs={grouped.dirs} groups={grouped.groups} stickyOffset={toolbarH} />
+          <FolderTreeView
+            skills={filtered}
+            totalCount={skills.length}
+            isSearching={!!search || filterType !== 'all'}
+            stickyTop={toolbarH}
+            onClearFilters={(filterType !== 'all' || search) ? () => { setFilterType('all'); setSearch(''); } : undefined}
+          />
         ) : (
           <SkillsTable skills={filtered} />
         )
@@ -451,79 +610,257 @@ export default function SkillsPage() {
   );
 }
 
-/* -- Grouped view (GroupedVirtuoso for sticky headers + virtualization) -- */
+/* -- Folder tree view (virtualized flat list) -------- */
 
-function GroupedView({ dirs, groups, stickyOffset = 0 }: { dirs: string[]; groups: Map<string, Skill[]>; stickyOffset?: number }) {
-  const showHeaders = dirs.length > 1 || (dirs.length === 1 && dirs[0] !== '');
+const INDENT_PX = 24;
 
-  // Chunk each group's skills into rows of 3 for GroupedVirtuoso
-  const { groupCounts, rows, dirCounts } = useMemo(() => {
-    const counts: number[] = [];
-    const allRows: Skill[][] = [];
-    const dc: number[] = [];
-    for (const dir of dirs) {
-      const skills = groups.get(dir) ?? [];
-      dc.push(skills.length);
-      let rowCount = 0;
-      for (let i = 0; i < skills.length; i += 3) {
-        allRows.push(skills.slice(i, i + 3));
-        rowCount++;
-      }
-      counts.push(rowCount || 1); // at least 1 row so group header shows
-      if (skills.length === 0) allRows.push([]); // empty placeholder row
+
+function FolderTreeView({ skills, totalCount, isSearching, stickyTop = 0, onClearFilters }: {
+  skills: Skill[];
+  totalCount: number;
+  isSearching: boolean;
+  stickyTop?: number;
+  onClearFilters?: () => void;
+}) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed);
+  const [stickyFolder, setStickyFolder] = useState<{ node: TreeNode; index: number } | null>(null);
+
+  const tree = useMemo(() => buildTree(skills), [skills]);
+
+  const rows = useMemo(
+    () => flattenTree(tree, collapsed, isSearching),
+    [tree, collapsed, isSearching],
+  );
+
+  const folderCount = useMemo(() => {
+    let count = 0;
+    for (const r of rows) if (r.type === 'folder') count++;
+    return count;
+  }, [rows]);
+
+  // Track scroll to find which folder should be sticky.
+  // Uses DOM positions to find the row index at the toolbar edge,
+  // then walks backwards in the rows DATA array (not DOM) to find
+  // the nearest folder — works even if Virtuoso unmounted that folder row.
+  useEffect(() => {
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        ticking = false;
+        const allEls = document.querySelectorAll<HTMLElement>('[data-tree-idx]');
+        if (allEls.length === 0) { setStickyFolder(null); return; }
+
+        // Find the index of the first row at or below the toolbar bottom
+        let edgeIdx = -1;
+        for (const el of allEls) {
+          if (el.getBoundingClientRect().top >= stickyTop) {
+            edgeIdx = parseInt(el.dataset.treeIdx!, 10);
+            break;
+          }
+        }
+        // All rendered rows are above toolbar — use the last one's index + 1
+        if (edgeIdx < 0) {
+          const lastEl = allEls[allEls.length - 1];
+          edgeIdx = parseInt(lastEl.dataset.treeIdx!, 10) + 1;
+        }
+        if (edgeIdx <= 0) { setStickyFolder(null); return; }
+
+        // Walk backwards in rows DATA to find nearest folder above the edge
+        for (let i = edgeIdx - 1; i >= 0; i--) {
+          if (rows[i]?.type === 'folder') {
+            setStickyFolder({ node: rows[i], index: i });
+            return;
+          }
+        }
+        setStickyFolder(null);
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [rows, stickyTop]);
+
+  const toggleFolder = useCallback((path: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      saveCollapsed(next);
+      return next;
+    });
+  }, []);
+
+  const expandAll = useCallback(() => {
+    setCollapsed(new Set());
+    saveCollapsed(new Set());
+  }, []);
+
+  const collapseAll = useCallback(() => {
+    const all = new Set(collectAllFolderPaths(tree));
+    setCollapsed(all);
+    saveCollapsed(all);
+  }, [tree]);
+
+  const renderItem = useCallback((index: number): ReactElement => {
+    const node = rows[index];
+    const indentGuides = node.depth > 0 ? (
+      Array.from({ length: node.depth }, (_, i) => (
+        <span
+          key={i}
+          className="absolute top-0 bottom-0 border-l border-muted/40"
+          style={{ left: i * INDENT_PX + 14 }}
+        />
+      ))
+    ) : null;
+
+    if (node.type === 'folder') {
+      const isFolderCollapsed = !isSearching && collapsed.has(node.path);
+      return (
+        <div
+          data-tree-idx={index}
+          className={`relative flex items-center gap-1.5 py-1.5 px-1 cursor-pointer select-none hover:bg-muted/50 transition-colors${node.isRoot ? ' border-t border-muted/60 mt-2 pt-3' : ''}`}
+          style={{ paddingLeft: node.depth * INDENT_PX + 4 }}
+          onClick={() => toggleFolder(node.path)}
+          role="treeitem"
+          aria-expanded={!isFolderCollapsed}
+        >
+          {indentGuides}
+          {isFolderCollapsed
+            ? <ChevronRight size={14} strokeWidth={2.5} className="text-pencil-light shrink-0" />
+            : <ChevronDown size={14} strokeWidth={2.5} className="text-pencil-light shrink-0" />
+          }
+          {isFolderCollapsed
+            ? <Folder size={16} strokeWidth={2.5} className="text-pencil shrink-0" />
+            : <FolderOpen size={16} strokeWidth={2.5} className="text-pencil shrink-0" />
+          }
+          <span className={`font-bold text-pencil shrink-0${node.isRoot ? ' text-pencil-light font-semibold' : ''}`}>
+            {node.name}
+          </span>
+          <span
+            className="text-[11px] text-pencil-light px-1.5 py-0 bg-muted shrink-0 ml-1.5"
+            style={{ borderRadius: radius.sm }}
+          >
+            {node.childCount}
+          </span>
+        </div>
+      );
     }
-    return { groupCounts: counts, rows: allRows, dirCounts: dc };
-  }, [dirs, groups]);
+
+    const skill = node.skill!;
+    const tooltipContent = (
+      <div>
+        <div>{skill.relPath}</div>
+        {(skill.source || skill.installedAt) && (
+          <>
+            <hr className="border-paper/30 my-1" />
+            {skill.source && <div>Source: {shortSource(skill.source)}</div>}
+            {skill.installedAt && <div>Installed: {new Date(skill.installedAt).toLocaleDateString()}</div>}
+          </>
+        )}
+      </div>
+    );
+
+    return (
+      <div data-tree-idx={index}>
+        <Tooltip content={tooltipContent} followCursor delay={1500}>
+          <Link
+            to={`/skills/${encodeURIComponent(skill.flatName)}`}
+            className={`relative flex items-center gap-1.5 py-1 px-1 hover:bg-muted/50 transition-colors no-underline${skill.disabled ? ' opacity-40' : ''}`}
+            style={{ paddingLeft: node.depth * INDENT_PX + 4 }}
+          >
+            {indentGuides}
+            <span style={{ width: 14 }} className="shrink-0" />
+            <Puzzle size={14} strokeWidth={2} className="text-pencil-light/60 shrink-0" />
+            <span className="text-sm text-pencil truncate">{skill.name}</span>
+            <span className="ml-auto shrink-0 flex items-center gap-1">
+              {skill.disabled && <Badge variant="danger">disabled</Badge>}
+              {skill.isInRepo
+                ? <Badge variant="default">tracked</Badge>
+                : getTypeLabel(skill.type)
+                  ? <Badge variant="info">{getTypeLabel(skill.type)}</Badge>
+                  : <Badge variant="default">local</Badge>
+              }
+            </span>
+          </Link>
+        </Tooltip>
+      </div>
+    );
+  }, [rows, collapsed, isSearching, toggleFolder]);
 
   return (
-    <GroupedVirtuoso
-      useWindowScroll
-      groupCounts={groupCounts}
-      overscan={200}
-      components={{
-        TopItemList: ({ style, ...props }) => (
-          <div {...props} style={{ ...style, top: stickyOffset, zIndex: 10 }} />
-        ),
-      }}
-      groupContent={(index) => {
-        if (!showHeaders) return <div />;
-        const dir = dirs[index];
-        return (
+    <div>
+      {/* Toolbar: stats + Expand/Collapse All */}
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <span className="text-sm text-pencil-light">
+          {isSearching ? (
+            <>
+              Showing {skills.length} of {totalCount} skills
+              {onClearFilters && (
+                <>
+                  {' '}&middot;{' '}
+                  <Button variant="link" onClick={onClearFilters}>Clear filters</Button>
+                </>
+              )}
+            </>
+          ) : (
+            <>{skills.length} skill{skills.length !== 1 ? 's' : ''} in {folderCount} folder{folderCount !== 1 ? 's' : ''}</>
+          )}
+        </span>
+        {folderCount > 1 && (
+          <span className="ml-auto flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={expandAll}>
+              <ChevronsUpDown size={14} strokeWidth={2.5} /> Expand All
+            </Button>
+            <Button variant="ghost" size="sm" onClick={collapseAll}>
+              <ChevronsDownUp size={14} strokeWidth={2.5} /> Collapse All
+            </Button>
+          </span>
+        )}
+      </div>
+
+      {/* Sticky folder header — appears when parent folder scrolls out of view */}
+      {stickyFolder && (
+        <div className="sticky z-10 bg-paper -mx-4 px-4 md:-mx-8 md:px-8 border-b border-dashed border-muted" style={{ top: stickyTop }}>
           <div
-            className="bg-paper -mx-4 px-4 md:-mx-8 md:px-8 flex items-center gap-2 py-2"
-            style={{ marginTop: index === 0 ? 0 : '1.5rem' }}
+            className="flex items-center gap-1.5 py-1.5 px-1 cursor-pointer select-none"
+            style={{ paddingLeft: 4 }}
+            onClick={() => {
+              const allEls = document.querySelectorAll<HTMLElement>('[data-tree-idx]');
+              if (allEls.length < 2) return;
+              const firstEl = allEls[0];
+              const lastEl = allEls[allEls.length - 1];
+              const firstIdx = parseInt(firstEl.dataset.treeIdx!, 10);
+              const lastIdx = parseInt(lastEl.dataset.treeIdx!, 10);
+              const avgH = (lastEl.getBoundingClientRect().top - firstEl.getBoundingClientRect().top) / (lastIdx - firstIdx);
+              // Estimated viewport position of the folder - desired position (toolbar bottom)
+              const offset = firstEl.getBoundingClientRect().top + (stickyFolder.index - firstIdx) * avgH - stickyTop;
+              window.scrollBy({ top: offset, behavior: 'smooth' });
+            }}
           >
-            <Folder size={18} strokeWidth={2.5} className="text-pencil-light" />
-            <h3 className="text-lg font-bold text-pencil">
-              {dir || '(root)'}
-            </h3>
+            <FolderOpen size={16} strokeWidth={2.5} className="text-pencil-light shrink-0" />
+            <span className={`font-semibold text-sm${stickyFolder.node.isRoot ? ' text-pencil-light' : ' text-pencil'}`}>
+              {stickyFolder.node.path || '(root)'}
+            </span>
             <span
-              className="text-sm text-pencil-light px-2 py-0.5 bg-muted"
+              className="text-xs text-pencil-light px-1.5 py-0 bg-muted shrink-0 ml-1"
               style={{ borderRadius: radius.sm }}
             >
-              {dirCounts[index]}
+              {stickyFolder.node.childCount}
             </span>
           </div>
-        );
-      }}
-      itemContent={(index) => {
-        const row = rows[index];
-        if (!row || row.length === 0) return <div />;
-        return (
-          <div className="flex flex-wrap gap-5 mb-5">
-            {row.map((skill) => (
-              <div
-                key={skill.flatName}
-                className="!w-full md:!w-[calc(50%-0.625rem)] xl:!w-[calc(33.333%-0.834rem)]"
-                style={{ display: 'flex', flex: 'none', boxSizing: 'border-box' }}
-              >
-                <SkillPostit skill={skill} />
-              </div>
-            ))}
-          </div>
-        );
-      }}
-    />
+        </div>
+      )}
+
+      {/* Virtualized tree */}
+      <Virtuoso
+        useWindowScroll
+        totalCount={rows.length}
+        overscan={600}
+        itemContent={renderItem}
+      />
+    </div>
   );
 }
 

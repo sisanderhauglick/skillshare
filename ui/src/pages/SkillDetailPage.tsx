@@ -473,9 +473,9 @@ export default function SkillDetailPage() {
                       href={skill.repoUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="link-subtle text-base inline-flex items-center gap-1"
+                      className="link-subtle text-base break-words"
                     >
-                      <ExternalLink size={12} strokeWidth={2.5} />
+                      <ExternalLink size={12} strokeWidth={2.5} className="inline -mt-0.5 mr-1" />
                       {skill.repoUrl.replace('https://', '').replace('.git', '')}
                     </a>
                   </dd>
@@ -484,43 +484,44 @@ export default function SkillDetailPage() {
             </dl>
 
             {/* Actions */}
-            <div className="flex gap-2 mt-4 pt-4 border-t border-dashed border-pencil-light/30">
-              <Button
-                onClick={handleToggleDisabled}
-                disabled={toggling}
-                variant={skill.disabled ? 'primary' : 'secondary'}
-                size="sm"
-                className="flex-1"
-              >
-                {toggling ? (
-                  <Spinner size="sm" />
-                ) : skill.disabled ? (
-                  <Eye size={14} strokeWidth={2.5} />
-                ) : (
-                  <EyeOff size={14} strokeWidth={2.5} />
-                )}
-                {toggling
-                  ? (skill.disabled ? 'Enabling...' : 'Disabling...')
-                  : (skill.disabled ? 'Enable' : 'Disable')}
-              </Button>
-              {(skill.isInRepo || skill.source) && (
+            <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-dashed border-pencil-light/30">
+              <div className="flex gap-2">
                 <Button
-                  onClick={() => handleUpdate()}
-                  disabled={updating}
-                  variant="secondary"
+                  onClick={handleToggleDisabled}
+                  disabled={toggling}
+                  variant={skill.disabled ? 'primary' : 'secondary'}
                   size="sm"
                   className="flex-1"
                 >
-                  {updating ? <Spinner size="sm" /> : <RefreshCw size={14} strokeWidth={2.5} />}
-                  {updating ? 'Updating...' : 'Update'}
+                  {toggling ? (
+                    <Spinner size="sm" />
+                  ) : skill.disabled ? (
+                    <Eye size={14} strokeWidth={2.5} />
+                  ) : (
+                    <EyeOff size={14} strokeWidth={2.5} />
+                  )}
+                  {toggling
+                    ? (skill.disabled ? 'Enabling...' : 'Disabling...')
+                    : (skill.disabled ? 'Enable' : 'Disable')}
                 </Button>
-              )}
+                {(skill.isInRepo || skill.source) && (
+                  <Button
+                    onClick={() => handleUpdate()}
+                    disabled={updating}
+                    variant="secondary"
+                    size="sm"
+                    className="flex-1"
+                  >
+                    {updating ? <Spinner size="sm" /> : <RefreshCw size={14} strokeWidth={2.5} />}
+                    {updating ? 'Updating...' : 'Update'}
+                  </Button>
+                )}
+              </div>
               <Button
                 onClick={() => setConfirmDelete(true)}
                 disabled={deleting}
                 variant="danger"
                 size="sm"
-                className="flex-1"
               >
                 <Trash2 size={12} strokeWidth={2.5} />
                 {deleting

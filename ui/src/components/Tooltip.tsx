@@ -6,16 +6,19 @@ interface TooltipProps {
   content: ReactNode;
   side?: 'top' | 'bottom';
   followCursor?: boolean;
+  delay?: number;
 }
 
 const OFFSET = 12;
 const MARGIN = 8;
 
-export default function Tooltip({ children, content, side = 'bottom', followCursor }: TooltipProps) {
+export default function Tooltip({ children, content, side = 'bottom', followCursor, delay = 200 }: TooltipProps) {
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const visibleRef = useRef(false);
   const tooltipRef = useRef<HTMLDivElement>(null);
+  const latestCursor = useRef({ x: 0, y: 0 });
+  const rafRef = useRef<number | undefined>(undefined);
 
   // Render at (0,0) hidden → measure natural size → clamp → show
   useLayoutEffect(() => {
@@ -41,12 +44,11 @@ export default function Tooltip({ children, content, side = 'bottom', followCurs
 
   const show = useCallback((e: React.MouseEvent) => {
     if (followCursor) {
-      const x = e.clientX + OFFSET;
-      const y = e.clientY + OFFSET;
+      latestCursor.current = { x: e.clientX + OFFSET, y: e.clientY + OFFSET };
       timerRef.current = setTimeout(() => {
         visibleRef.current = true;
-        setPos({ x, y });
-      }, 200);
+        setPos({ ...latestCursor.current });
+      }, delay);
     } else {
       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
       timerRef.current = setTimeout(() => {
@@ -54,18 +56,24 @@ export default function Tooltip({ children, content, side = 'bottom', followCurs
           x: rect.left,
           y: side === 'top' ? rect.top - 4 : rect.bottom + 4,
         });
-      }, 200);
+      }, delay);
     }
-  }, [side, followCursor]);
+  }, [side, followCursor, delay]);
 
   const move = useCallback((e: React.MouseEvent) => {
-    if (visibleRef.current) {
-      setPos({ x: e.clientX + OFFSET, y: e.clientY + OFFSET });
+    latestCursor.current = { x: e.clientX + OFFSET, y: e.clientY + OFFSET };
+    if (visibleRef.current && rafRef.current === undefined) {
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = undefined;
+        setPos({ ...latestCursor.current });
+      });
     }
   }, []);
 
   const hide = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
+    if (rafRef.current !== undefined) cancelAnimationFrame(rafRef.current);
+    rafRef.current = undefined;
     visibleRef.current = false;
     setPos(null);
   }, []);
