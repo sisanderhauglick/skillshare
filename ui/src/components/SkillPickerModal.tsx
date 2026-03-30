@@ -86,7 +86,14 @@ export default function SkillPickerModal({
   return (
     <DialogShell open={open} onClose={onCancel} maxWidth="2xl" preventClose={installing}>
           <h3 className="text-xl font-bold text-pencil mb-1">
-            {singleSelect ? 'Select a Skill to Install' : 'Select Skills to Install'}
+            {singleSelect
+              ? 'Select a Resource to Install'
+              : skills.some((s) => s.kind === 'agent')
+                ? skills.every((s) => s.kind === 'agent')
+                  ? 'Select Agents to Install'
+                  : 'Select Resources to Install'
+                : 'Select Skills to Install'
+            }
           </h3>
           <p className="text-sm text-pencil-light mb-4 truncate font-mono">
             {source}
