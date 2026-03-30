@@ -125,6 +125,17 @@ brew install skillshare
 
 > **Tip:** Run `skillshare upgrade` to update to the latest version. It auto-detects your install method and handles the rest.
 
+### GitHub Actions
+
+```yaml
+- uses: runkids/setup-skillshare@v1
+  with:
+    source: ./skills
+- run: skillshare sync
+```
+
+See [`setup-skillshare`](https://github.com/marketplace/actions/setup-skillshare) for all options (audit, project mode, version pinning).
+
 ### Shorthand (Optional)
 
 Add an alias to your shell config (`~/.zshrc` or `~/.bashrc`):
