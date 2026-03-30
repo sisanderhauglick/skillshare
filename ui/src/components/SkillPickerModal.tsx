@@ -150,24 +150,26 @@ export default function SkillPickerModal({
               return (
                 <label
                   key={skill.path}
-                  className="flex items-center gap-2 py-1.5 px-1 rounded-md cursor-pointer hover:bg-muted/30 transition-colors"
+                  className="flex items-start gap-2 py-1.5 px-1 rounded-md cursor-pointer hover:bg-muted/30 transition-colors"
                   style={{ borderRadius: radius.sm }}
                 >
                   {singleSelect ? (
                     <span
-                      className={`w-4 h-4 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors ${
+                      className={`mt-1.5 w-4 h-4 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors ${
                         isSelected ? 'border-info bg-info' : 'border-muted-dark'
                       }`}
                     >
                       {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
                     </span>
                   ) : (
-                    <Checkbox
-                      label=""
-                      checked={isSelected}
-                      onChange={() => toggle(skill.path)}
-                      size="sm"
-                    />
+                    <span className="mt-1.5">
+                      <Checkbox
+                        label=""
+                        checked={isSelected}
+                        onChange={() => toggle(skill.path)}
+                        size="sm"
+                      />
+                    </span>
                   )}
                   <div className="min-w-0 flex-1" onClick={singleSelect ? () => toggle(skill.path) : undefined}>
                     <span className="font-bold text-pencil text-base inline-flex items-center gap-1.5">

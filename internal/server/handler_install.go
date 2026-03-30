@@ -222,7 +222,11 @@ func (s *Server) handleInstallBatch(w http.ResponseWriter, r *http.Request) {
 			failedSkills = append(failedSkills, r.Name)
 		}
 	}
-	summary := fmt.Sprintf("Installed %d of %d skills", installed, len(body.Skills))
+	kindLabel := "skills"
+	if isAgent {
+		kindLabel = "agents"
+	}
+	summary := fmt.Sprintf("Installed %d of %d %s", installed, len(body.Skills), kindLabel)
 	if firstErr != "" {
 		summary += " (some errors)"
 	}
