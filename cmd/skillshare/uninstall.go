@@ -25,7 +25,7 @@ import (
 type uninstallOptions struct {
 	skillNames []string           // positional args (0+)
 	groups     []string           // --group/-G values (repeatable)
-	kind       resourceKindFilter // --kind skill|agent
+	kind       resourceKindFilter // set by positional filter (e.g. "uninstall agents")
 	all        bool               // --all: remove ALL skills from source
 	force      bool
 	dryRun     bool
@@ -70,19 +70,6 @@ func parseUninstallArgs(args []string) (*uninstallOptions, bool, error) {
 			opts.dryRun = true
 		case arg == "--json":
 			opts.jsonOutput = true
-		case arg == "--kind":
-			i++
-			if i >= len(args) {
-				return nil, false, fmt.Errorf("--kind requires a value (skill or agent)")
-			}
-			switch strings.ToLower(args[i]) {
-			case "skill", "skills":
-				opts.kind = kindSkills
-			case "agent", "agents":
-				opts.kind = kindAgents
-			default:
-				return nil, false, fmt.Errorf("--kind must be 'skill' or 'agent', got %q", args[i])
-			}
 		case arg == "--group" || arg == "-G":
 			i++
 			if i >= len(args) {
@@ -563,12 +550,8 @@ func cmdUninstall(args []string) error {
 
 	applyModeLabel(mode)
 
-	// Extract --kind flag before parsing other args.
-	kind, rest, err := parseKindFlag(rest)
-	if err != nil {
-		return err
-	}
-	_ = kind // TODO: wire agent-specific uninstall path
+	// Extract kind filter (e.g. "skillshare uninstall agents myagent").
+	kind, rest := parseKindArg(rest)
 
 	if mode == modeProject {
 		err := cmdUninstallProject(rest, cwd)
@@ -598,16 +581,11 @@ func cmdUninstall(args []string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// When --kind agent is set, resolve targets from the agents source directory.
+	// Agent-only uninstall: move .md + sidecar to agent trash, then return.
 	if kind == kindAgents {
 		agentsDir := cfg.EffectiveAgentsSource()
-		for i, name := range opts.skillNames {
-			agentPath := filepath.Join(agentsDir, name+".md")
-			if _, statErr := os.Stat(agentPath); statErr == nil {
-				opts.skillNames[i] = agentPath
-			}
-		}
-		// TODO: implement full agent uninstall (remove .md + .skillshare-meta.json, update registry)
+		err := cmdUninstallAgents(agentsDir, opts, config.ConfigPath(), start)
+		return err
 	}
 
 	// --- Phase 1: RESOLVE ---

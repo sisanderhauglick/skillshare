@@ -460,7 +460,7 @@ func restoreTUIDispatch(noTUI bool) error {
 		if projectConfigExists(cwd) {
 			mode = modeProject
 		}
-		trashBase := resolveTrashBase(mode, cwd)
+		trashBase := resolveTrashBase(mode, cwd, kindSkills)
 		items := trash.List(trashBase)
 		if len(items) == 0 {
 			ui.Info("Trash is empty")
@@ -471,7 +471,7 @@ func restoreTUIDispatch(noTUI bool) error {
 			modeLabel = "project"
 		}
 		cfgPath := resolveTrashCfgPath(mode, cwd)
-		destDir, err := resolveSourceDir(mode, cwd)
+		destDir, err := resolveSourceDir(mode, cwd, kindSkills)
 		if err != nil {
 			return err
 		}

@@ -8,15 +8,17 @@ func TestParseKindArg(t *testing.T) {
 		wantKind resourceKindFilter
 		wantRest []string
 	}{
-		{nil, kindAll, nil},
-		{[]string{}, kindAll, []string{}},
+		{nil, kindSkills, nil},
+		{[]string{}, kindSkills, []string{}},
 		{[]string{"skills"}, kindSkills, []string{}},
 		{[]string{"skill"}, kindSkills, []string{}},
 		{[]string{"agents"}, kindAgents, []string{}},
 		{[]string{"agent"}, kindAgents, []string{}},
+		{[]string{"all"}, kindAll, []string{}},
+		{[]string{"all", "--json"}, kindAll, []string{"--json"}},
 		{[]string{"agents", "tutor"}, kindAgents, []string{"tutor"}},
-		{[]string{"--json"}, kindAll, []string{"--json"}},
-		{[]string{"my-skill"}, kindAll, []string{"my-skill"}},
+		{[]string{"--json"}, kindSkills, []string{"--json"}},
+		{[]string{"my-skill"}, kindSkills, []string{"my-skill"}},
 	}
 
 	for _, tt := range tests {

@@ -82,6 +82,9 @@ func cmdCollect(args []string) error {
 
 	applyModeLabel(mode)
 
+	// Extract kind filter (e.g. "skillshare collect agents").
+	kind, rest := parseKindArg(rest)
+
 	if mode == modeProject {
 		err := cmdCollectProject(rest, cwd)
 		logCollectOp(config.ProjectConfigPath(cwd), start, err)
@@ -109,6 +112,15 @@ func cmdCollect(args []string) error {
 				targetName = arg
 			}
 		}
+	}
+
+	// Agent-only collect: use CollectAgents from agent-capable targets.
+	if kind == kindAgents {
+		cfg, loadErr := config.Load()
+		if loadErr != nil {
+			return loadErr
+		}
+		return cmdCollectAgents(cfg, dryRun, jsonOutput, start)
 	}
 
 	// --json implies --force (skip confirmation prompts)

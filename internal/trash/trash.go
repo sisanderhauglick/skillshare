@@ -247,6 +247,51 @@ func Restore(entry *TrashEntry, destDir string) error {
 	return nil
 }
 
+// RestoreAgent restores agent files from a trashed directory back to the agent source.
+// Unlike Restore (which moves the whole directory), this copies individual files
+// from the trashed directory to destDir (since agents are file-based, not directory-based).
+func RestoreAgent(entry *TrashEntry, destDir string) error {
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return fmt.Errorf("failed to create agent destination: %w", err)
+	}
+
+	// Read files from the trashed directory
+	entries, err := os.ReadDir(entry.Path)
+	if err != nil {
+		return fmt.Errorf("failed to read trashed agent: %w", err)
+	}
+
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		srcPath := filepath.Join(entry.Path, e.Name())
+		destPath := filepath.Join(destDir, e.Name())
+
+		if _, statErr := os.Stat(destPath); statErr == nil {
+			return fmt.Errorf("'%s' already exists in %s", e.Name(), destDir)
+		}
+
+		// Try rename, fallback to copy
+		if renameErr := os.Rename(srcPath, destPath); renameErr != nil {
+			data, readErr := os.ReadFile(srcPath)
+			if readErr != nil {
+				return fmt.Errorf("failed to read %s: %w", e.Name(), readErr)
+			}
+			if writeErr := os.WriteFile(destPath, data, 0644); writeErr != nil {
+				return fmt.Errorf("failed to write %s: %w", e.Name(), writeErr)
+			}
+		}
+	}
+
+	// Remove the trashed directory
+	if removeErr := os.RemoveAll(entry.Path); removeErr != nil {
+		return fmt.Errorf("restored but failed to remove trash entry: %w", removeErr)
+	}
+
+	return nil
+}
+
 // parseTrashName splits "skillname_YYYY-MM-DD_HH-MM-SS" into name and timestamp.
 func parseTrashName(dirName string) (string, string) {
 	// Timestamp format: YYYY-MM-DD_HH-MM-SS (19 chars)

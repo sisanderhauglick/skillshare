@@ -100,6 +100,9 @@ func cmdSync(args []string) error {
 
 	applyModeLabel(mode)
 
+	// Extract kind filter (e.g. "skillshare sync agents").
+	kind, rest := parseKindArg(rest)
+
 	dryRun, force, jsonOutput := parseSyncFlags(rest)
 
 	prevDiagOutput := sync.DiagOutput
@@ -160,7 +163,14 @@ func cmdSync(args []string) error {
 		}
 	}
 
-	// Phase 1: Discovery
+	// Agent-only mode: skip skill discovery/sync entirely
+	if kind == kindAgents {
+		_, agentErr := syncAgentsGlobal(cfg, dryRun, force, jsonOutput, start)
+		logSyncOp(config.ConfigPath(), syncLogStats{DryRun: dryRun, Force: force}, start, agentErr)
+		return agentErr
+	}
+
+	// Phase 1: Discovery (skills)
 	var spinner *ui.Spinner
 	if !jsonOutput {
 		spinner = ui.StartSpinner("Discovering skills")
@@ -259,6 +269,13 @@ func cmdSync(args []string) error {
 			return syncOutputJSON(results, dryRun, start, ignoreStats, syncErr, extrasEntries)
 		}
 		return syncOutputJSON(results, dryRun, start, ignoreStats, syncErr)
+	}
+
+	// Agent sync when kind=all (after skill sync)
+	if kind == kindAll {
+		if _, agentErr := syncAgentsGlobal(cfg, dryRun, force, jsonOutput, start); agentErr != nil && syncErr == nil {
+			syncErr = agentErr
+		}
 	}
 
 	if hasAll {

@@ -13,11 +13,12 @@ const (
 
 // parseKindArg extracts a kind filter from the first positional argument.
 // Returns the filter and remaining args.
-// Recognized values: "skills", "skill", "agents", "agent".
-// If the first arg is not a kind keyword, returns kindAll with args unchanged.
+// Recognized values: "skills", "skill", "agents", "agent", "all".
+// If the first arg is not a kind keyword, returns kindSkills with args unchanged
+// (default is skills-only; explicit "all" required for both).
 func parseKindArg(args []string) (resourceKindFilter, []string) {
 	if len(args) == 0 {
-		return kindAll, args
+		return kindSkills, args
 	}
 
 	switch args[0] {
@@ -25,8 +26,10 @@ func parseKindArg(args []string) (resourceKindFilter, []string) {
 		return kindSkills, args[1:]
 	case "agents", "agent":
 		return kindAgents, args[1:]
+	case "all":
+		return kindAll, args[1:]
 	default:
-		return kindAll, args
+		return kindSkills, args
 	}
 }
 

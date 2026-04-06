@@ -12,6 +12,7 @@ import (
 	"skillshare/internal/config"
 	"skillshare/internal/git"
 	"skillshare/internal/install"
+	"skillshare/internal/resource"
 	"skillshare/internal/sync"
 	"skillshare/internal/ui"
 	"skillshare/internal/utils"
@@ -207,6 +208,7 @@ func buildSkillEntries(discovered []sync.DiscoveredSkill) []skillEntry {
 	for i, d := range discovered {
 		skills[i] = skillEntry{
 			Name:     d.FlatName,
+			Kind:     "skill",
 			IsNested: d.IsInRepo || utils.HasNestedSeparator(d.FlatName),
 			RelPath:  d.RelPath,
 			Disabled: d.Disabled,
@@ -259,6 +261,43 @@ func buildSkillEntries(discovered []sync.DiscoveredSkill) []skillEntry {
 	}
 
 	return skills
+}
+
+// discoverAndBuildAgentEntries discovers agents from the given source directory
+// and builds skillEntry items with Kind="agent". Reads sidecar metadata for
+// installed agents (<name>.skillshare-meta.json).
+func discoverAndBuildAgentEntries(agentsSource string) []skillEntry {
+	if agentsSource == "" {
+		return nil
+	}
+	discovered, err := resource.AgentKind{}.Discover(agentsSource)
+	if err != nil {
+		return nil
+	}
+
+	entries := make([]skillEntry, len(discovered))
+	for i, d := range discovered {
+		entries[i] = skillEntry{
+			Name:     d.Name,
+			Kind:     "agent",
+			RelPath:  d.RelPath,
+			IsNested: d.IsNested,
+			Disabled: d.Disabled,
+		}
+		// Read sidecar metadata: <name>.skillshare-meta.json
+		metaPath := filepath.Join(agentsSource, d.Name+".skillshare-meta.json")
+		if data, readErr := os.ReadFile(metaPath); readErr == nil {
+			var meta install.SkillMeta
+			if jsonErr := json.Unmarshal(data, &meta); jsonErr == nil {
+				entries[i].Source = meta.Source
+				entries[i].Type = meta.Type
+				if !meta.InstalledAt.IsZero() {
+					entries[i].InstalledAt = meta.InstalledAt.Format("2006-01-02")
+				}
+			}
+		}
+	}
+	return entries
 }
 
 // extractGroupDir returns the parent directory from a RelPath.
@@ -512,6 +551,9 @@ func cmdList(args []string) error {
 
 	applyModeLabel(mode)
 
+	// Extract kind filter (e.g. "skillshare list agents").
+	kind, rest := parseKindArg(rest)
+
 	opts, err := parseListArgs(rest)
 	if opts.ShowHelp {
 		printListHelp()
@@ -522,7 +564,7 @@ func cmdList(args []string) error {
 	}
 
 	if mode == modeProject {
-		return cmdListProject(cwd, opts)
+		return cmdListProject(cwd, opts, kind)
 	}
 
 	cfg, err := config.Load()
@@ -533,17 +575,23 @@ func cmdList(args []string) error {
 	// TTY + not JSON + TUI enabled → launch TUI with async loading (no blank screen)
 	if !opts.JSON && shouldLaunchTUI(opts.NoTUI, cfg) {
 		loadFn := func() listLoadResult {
-			discovered, err := sync.DiscoverSourceSkillsAll(cfg.Source)
-			if err != nil {
-				return listLoadResult{err: fmt.Errorf("cannot discover skills: %w", err)}
+			var allEntries []skillEntry
+			if kind.IncludesSkills() {
+				discovered, discErr := sync.DiscoverSourceSkillsAll(cfg.Source)
+				if discErr != nil {
+					return listLoadResult{err: fmt.Errorf("cannot discover skills: %w", discErr)}
+				}
+				allEntries = append(allEntries, buildSkillEntries(discovered)...)
 			}
-			skills := buildSkillEntries(discovered)
-			total := len(skills)
-			skills = filterSkillEntries(skills, opts.Pattern, opts.TypeFilter)
+			if kind.IncludesAgents() {
+				allEntries = append(allEntries, discoverAndBuildAgentEntries(cfg.EffectiveAgentsSource())...)
+			}
+			total := len(allEntries)
+			allEntries = filterSkillEntries(allEntries, opts.Pattern, opts.TypeFilter)
 			if opts.SortBy != "" {
-				sortSkillEntries(skills, opts.SortBy)
+				sortSkillEntries(allEntries, opts.SortBy)
 			}
-			return listLoadResult{skills: toSkillItems(skills), totalCount: total}
+			return listLoadResult{skills: toSkillItems(allEntries), totalCount: total}
 		}
 		action, skillName, err := runListTUI(loadFn, "global", cfg.Source, cfg.Targets)
 		if err != nil {
@@ -551,8 +599,11 @@ func cmdList(args []string) error {
 		}
 		switch action {
 		case "empty":
-			ui.Info("No skills installed")
-			ui.Info("Use 'skillshare install <source>' to install a skill")
+			resourceLabel := "skills"
+			if kind == kindAgents {
+				resourceLabel = "agents"
+			}
+			ui.Info("No %s installed", resourceLabel)
 			return nil
 		case "audit":
 			return cmdAudit([]string{"-g", skillName})
@@ -565,82 +616,110 @@ func cmdList(args []string) error {
 	}
 
 	// Non-TUI path (JSON or plain text): synchronous loading with spinner
+	resourceLabel := "skills"
+	if kind == kindAgents {
+		resourceLabel = "agents"
+	} else if kind == kindAll {
+		resourceLabel = "resources"
+	}
+
 	var sp *ui.Spinner
 	if !opts.JSON && ui.IsTTY() {
-		sp = ui.StartSpinner("Loading skills...")
+		sp = ui.StartSpinner(fmt.Sprintf("Loading %s...", resourceLabel))
 	}
-	discovered, err := sync.DiscoverSourceSkillsAll(cfg.Source)
-	if err != nil {
-		if sp != nil {
-			sp.Fail("Discovery failed")
+
+	var allEntries []skillEntry
+	var trackedRepos []string
+	var discoveredSkills []sync.DiscoveredSkill
+
+	if kind.IncludesSkills() {
+		var discErr error
+		discoveredSkills, discErr = sync.DiscoverSourceSkillsAll(cfg.Source)
+		if discErr != nil {
+			if sp != nil {
+				sp.Fail("Discovery failed")
+			}
+			return fmt.Errorf("cannot discover skills: %w", discErr)
 		}
-		return fmt.Errorf("cannot discover skills: %w", err)
+		trackedRepos = extractTrackedRepos(discoveredSkills)
+		if sp != nil {
+			sp.Update(fmt.Sprintf("Reading metadata for %d skills...", len(discoveredSkills)))
+		}
+		allEntries = append(allEntries, buildSkillEntries(discoveredSkills)...)
 	}
-	trackedRepos := extractTrackedRepos(discovered)
+
+	if kind.IncludesAgents() {
+		agentEntries := discoverAndBuildAgentEntries(cfg.EffectiveAgentsSource())
+		allEntries = append(allEntries, agentEntries...)
+	}
 
 	if sp != nil {
-		sp.Update(fmt.Sprintf("Reading metadata for %d skills...", len(discovered)))
+		sp.Success(fmt.Sprintf("Loaded %d %s", len(allEntries), resourceLabel))
 	}
-	skills := buildSkillEntries(discovered)
-	if sp != nil {
-		sp.Success(fmt.Sprintf("Loaded %d skills", len(skills)))
-	}
-	totalCount := len(skills)
+	totalCount := len(allEntries)
 	hasFilter := opts.Pattern != "" || opts.TypeFilter != ""
 
 	// Apply filter and sort
-	skills = filterSkillEntries(skills, opts.Pattern, opts.TypeFilter)
+	allEntries = filterSkillEntries(allEntries, opts.Pattern, opts.TypeFilter)
 	if opts.SortBy != "" {
-		sortSkillEntries(skills, opts.SortBy)
+		sortSkillEntries(allEntries, opts.SortBy)
 	}
 
 	// JSON output
 	if opts.JSON {
-		return displaySkillsJSON(skills)
+		return displaySkillsJSON(allEntries)
 	}
 
-	// Handle empty results before starting pager
-	if len(skills) == 0 && len(trackedRepos) == 0 && !hasFilter {
-		ui.Info("No skills installed")
-		ui.Info("Use 'skillshare install <source>' to install a skill")
+	// Handle empty results
+	if len(allEntries) == 0 && len(trackedRepos) == 0 && !hasFilter {
+		ui.Info("No %s installed", resourceLabel)
+		if kind.IncludesSkills() {
+			ui.Info("Use 'skillshare install <source>' to install a skill")
+		}
 		return nil
 	}
 
-	if hasFilter && len(skills) == 0 {
+	if hasFilter && len(allEntries) == 0 {
 		if opts.Pattern != "" && opts.TypeFilter != "" {
-			ui.Info("No skills matching %q (type: %s)", opts.Pattern, opts.TypeFilter)
+			ui.Info("No %s matching %q (type: %s)", resourceLabel, opts.Pattern, opts.TypeFilter)
 		} else if opts.Pattern != "" {
-			ui.Info("No skills matching %q", opts.Pattern)
+			ui.Info("No %s matching %q", resourceLabel, opts.Pattern)
 		} else {
-			ui.Info("No skills matching type %q", opts.TypeFilter)
+			ui.Info("No %s matching type %q", resourceLabel, opts.TypeFilter)
 		}
 		return nil
 	}
 
 	// Plain text output (--no-tui or non-TTY)
-	if len(skills) > 0 {
-		ui.Header("Installed skills")
+	if len(allEntries) > 0 {
+		headerLabel := "Installed skills"
+		if kind == kindAgents {
+			headerLabel = "Installed agents"
+		} else if kind == kindAll {
+			headerLabel = "Installed skills & agents"
+		}
+		ui.Header(headerLabel)
 		if opts.Verbose {
-			displaySkillsVerbose(skills)
+			displaySkillsVerbose(allEntries)
 		} else {
-			displaySkillsCompact(skills)
+			displaySkillsCompact(allEntries)
 		}
 	}
 
 	// Hide tracked repos section when filter/pattern is active
 	if len(trackedRepos) > 0 && !hasFilter {
-		displayTrackedRepos(trackedRepos, discovered, cfg.Source)
+		displayTrackedRepos(trackedRepos, discoveredSkills, cfg.Source)
 	}
 
 	// Show match stats when filter is active
-	if hasFilter && len(skills) > 0 {
+	if hasFilter && len(allEntries) > 0 {
 		fmt.Println()
 		if opts.Pattern != "" {
-			ui.Info("%d of %d skill(s) matching %q", len(skills), totalCount, opts.Pattern)
+			ui.Info("%d of %d %s matching %q", len(allEntries), totalCount, resourceLabel, opts.Pattern)
 		} else {
-			ui.Info("%d of %d skill(s)", len(skills), totalCount)
+			ui.Info("%d of %d %s", len(allEntries), totalCount, resourceLabel)
 		}
-	} else if !opts.Verbose && len(skills) > 0 {
+	} else if !opts.Verbose && len(allEntries) > 0 {
 		fmt.Println()
 		ui.Info("Use --verbose for more details")
 	}
@@ -678,6 +757,7 @@ func displaySkillsJSON(skills []skillEntry) error {
 	for i, s := range skills {
 		items[i] = skillJSON{
 			Name:        s.Name,
+			Kind:        s.Kind,
 			RelPath:     s.RelPath,
 			Source:      s.Source,
 			Type:        s.Type,

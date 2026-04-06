@@ -33,6 +33,9 @@ func cmdTrash(args []string) error {
 
 	applyModeLabel(mode)
 
+	// Extract kind filter (e.g. "skillshare trash agents list").
+	kind, rest := parseKindArg(rest)
+
 	if len(rest) == 0 {
 		printTrashHelp()
 		return nil
@@ -54,13 +57,13 @@ func cmdTrash(args []string) error {
 
 	switch sub {
 	case "list", "ls":
-		return trashList(mode, cwd, noTUI)
+		return trashList(mode, cwd, noTUI, kind)
 	case "restore":
-		return trashRestore(mode, cwd, filteredArgs)
+		return trashRestore(mode, cwd, filteredArgs, kind)
 	case "delete", "rm":
-		return trashDelete(mode, cwd, filteredArgs)
+		return trashDelete(mode, cwd, filteredArgs, kind)
 	case "empty":
-		return trashEmpty(mode, cwd)
+		return trashEmpty(mode, cwd, kind)
 	case "--help", "-h", "help":
 		printTrashHelp()
 		return nil
@@ -70,8 +73,8 @@ func cmdTrash(args []string) error {
 	}
 }
 
-func trashList(mode runMode, cwd string, noTUI bool) error {
-	trashBase := resolveTrashBase(mode, cwd)
+func trashList(mode runMode, cwd string, noTUI bool, kind resourceKindFilter) error {
+	trashBase := resolveTrashBase(mode, cwd, kind)
 	items := trash.List(trashBase)
 
 	if len(items) == 0 {
@@ -86,7 +89,7 @@ func trashList(mode runMode, cwd string, noTUI bool) error {
 			modeLabel = "project"
 		}
 		cfgPath := resolveTrashCfgPath(mode, cwd)
-		destDir, err := resolveSourceDir(mode, cwd)
+		destDir, err := resolveSourceDir(mode, cwd, kind)
 		if err != nil {
 			return err
 		}
@@ -110,7 +113,7 @@ func trashList(mode runMode, cwd string, noTUI bool) error {
 	return nil
 }
 
-func trashRestore(mode runMode, cwd string, args []string) error {
+func trashRestore(mode runMode, cwd string, args []string, kind resourceKindFilter) error {
 	start := time.Now()
 
 	var name string
@@ -136,7 +139,7 @@ func trashRestore(mode runMode, cwd string, args []string) error {
 
 	cfgPath := resolveTrashCfgPath(mode, cwd)
 
-	trashBase := resolveTrashBase(mode, cwd)
+	trashBase := resolveTrashBase(mode, cwd, kind)
 	entry := trash.FindByName(trashBase, name)
 	if entry == nil {
 		cmdErr := fmt.Errorf("'%s' not found in trash", name)
@@ -144,28 +147,39 @@ func trashRestore(mode runMode, cwd string, args []string) error {
 		return cmdErr
 	}
 
-	destDir, err := resolveSourceDir(mode, cwd)
+	destDir, err := resolveSourceDir(mode, cwd, kind)
 	if err != nil {
 		logTrashOp(cfgPath, "restore", 0, name, start, err)
 		return err
 	}
 
-	if err := trash.Restore(entry, destDir); err != nil {
-		logTrashOp(cfgPath, "restore", 0, name, start, err)
-		return err
+	if kind == kindAgents {
+		if err := trash.RestoreAgent(entry, destDir); err != nil {
+			logTrashOp(cfgPath, "restore", 0, name, start, err)
+			return err
+		}
+	} else {
+		if err := trash.Restore(entry, destDir); err != nil {
+			logTrashOp(cfgPath, "restore", 0, name, start, err)
+			return err
+		}
 	}
 
 	ui.Success("Restored: %s", name)
 	age := time.Since(entry.Date)
 	ui.Info("Trashed %s ago, now back in %s", formatAge(age), destDir)
 	ui.SectionLabel("Next Steps")
-	ui.Info("Run 'skillshare sync' to update targets")
+	syncHint := "skillshare sync"
+	if kind == kindAgents {
+		syncHint = "skillshare sync agents"
+	}
+	ui.Info("Run '%s' to update targets", syncHint)
 
 	logTrashOp(cfgPath, "restore", 1, name, start, nil)
 	return nil
 }
 
-func trashDelete(mode runMode, cwd string, args []string) error {
+func trashDelete(mode runMode, cwd string, args []string, kind resourceKindFilter) error {
 	var name string
 	for _, arg := range args {
 		switch {
@@ -187,7 +201,7 @@ func trashDelete(mode runMode, cwd string, args []string) error {
 		return fmt.Errorf("skill name is required")
 	}
 
-	trashBase := resolveTrashBase(mode, cwd)
+	trashBase := resolveTrashBase(mode, cwd, kind)
 	entry := trash.FindByName(trashBase, name)
 	if entry == nil {
 		return fmt.Errorf("'%s' not found in trash", name)
@@ -201,11 +215,11 @@ func trashDelete(mode runMode, cwd string, args []string) error {
 	return nil
 }
 
-func trashEmpty(mode runMode, cwd string) error {
+func trashEmpty(mode runMode, cwd string, kind resourceKindFilter) error {
 	start := time.Now()
 	cfgPath := resolveTrashCfgPath(mode, cwd)
 
-	trashBase := resolveTrashBase(mode, cwd)
+	trashBase := resolveTrashBase(mode, cwd, kind)
 	items := trash.List(trashBase)
 
 	if len(items) == 0 {
@@ -238,14 +252,30 @@ func trashEmpty(mode runMode, cwd string) error {
 	return nil
 }
 
-func resolveTrashBase(mode runMode, cwd string) string {
+func resolveTrashBase(mode runMode, cwd string, kind resourceKindFilter) string {
+	if kind == kindAgents {
+		if mode == modeProject {
+			return trash.ProjectAgentTrashDir(cwd)
+		}
+		return trash.AgentTrashDir()
+	}
 	if mode == modeProject {
 		return trash.ProjectTrashDir(cwd)
 	}
 	return trash.TrashDir()
 }
 
-func resolveSourceDir(mode runMode, cwd string) (string, error) {
+func resolveSourceDir(mode runMode, cwd string, kind resourceKindFilter) (string, error) {
+	if kind == kindAgents {
+		if mode == modeProject {
+			return fmt.Sprintf("%s/.skillshare/agents", cwd), nil
+		}
+		cfg, err := config.Load()
+		if err != nil {
+			return "", fmt.Errorf("failed to load config: %w", err)
+		}
+		return cfg.EffectiveAgentsSource(), nil
+	}
 	if mode == modeProject {
 		return fmt.Sprintf("%s/.skillshare/skills", cwd), nil
 	}

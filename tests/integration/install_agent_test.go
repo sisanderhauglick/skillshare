@@ -116,7 +116,7 @@ targets: {}
 	}
 }
 
-func TestUninstall_KindAgent_ParsesFlag(t *testing.T) {
+func TestUninstall_AgentsPositional_ParsesCorrectly(t *testing.T) {
 	sb := testutil.NewSandbox(t)
 	defer sb.Cleanup()
 
@@ -124,8 +124,7 @@ func TestUninstall_KindAgent_ParsesFlag(t *testing.T) {
 targets: {}
 `)
 
-	// --kind agent with nonexistent agent — should error with agent not found
-	result := sb.RunCLI("uninstall", "-g", "--kind", "agent", "nonexistent")
-	// May fail because agent doesn't exist, but should parse flags correctly (no "unknown option")
+	// Positional "agents" with nonexistent agent — should parse correctly (no "unknown option")
+	result := sb.RunCLI("uninstall", "-g", "agents", "nonexistent")
 	result.AssertOutputNotContains(t, "unknown option")
 }
