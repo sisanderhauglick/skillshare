@@ -9,6 +9,12 @@ All notable changes to skillshare are documented here. For the full commit histo
 
 ---
 
+## [0.18.8] - 2026-04-06
+
+### Bug Fixes
+
+- **Sync no longer deletes registry entries for installed skills** — running `skillshare sync` (or project-mode `sync -p`) would silently remove `registry.yaml` entries for skills whose source files were not present on disk. This meant that installing a skill and then syncing could erase the installation record entirely. Sync now leaves the registry untouched — only `install` and `uninstall` manage registry entries
+
 ## [0.18.7] - 2026-04-04
 
 ### New Features

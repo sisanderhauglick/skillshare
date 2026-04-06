@@ -5,6 +5,7 @@ package integration
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"skillshare/internal/testutil"
@@ -107,6 +108,39 @@ func TestSyncProject_DryRun_NoChanges(t *testing.T) {
 
 	if sb.IsSymlink(filepath.Join(projectRoot, ".claude", "skills", "test")) {
 		t.Error("dry-run should not create symlinks")
+	}
+}
+
+func TestSyncProject_PreservesRegistryEntries(t *testing.T) {
+	sb := testutil.NewSandbox(t)
+	defer sb.Cleanup()
+	projectRoot := sb.SetupProjectDir("claude")
+
+	// Create a skill on disk that sync will discover
+	sb.CreateProjectSkill(projectRoot, "local-skill", map[string]string{
+		"SKILL.md": "# Local Skill",
+	})
+
+	// Write a registry with a remote-installed skill that has NO files on disk.
+	// Sync must NOT prune this entry — the registry is the source of truth for installations.
+	registryPath := filepath.Join(projectRoot, ".skillshare", "registry.yaml")
+	registryContent := "skills:\n  - name: remote-tool\n    source: github.com/someone/remote-tool\n"
+	os.WriteFile(registryPath, []byte(registryContent), 0644)
+
+	result := sb.RunCLIInDir(projectRoot, "sync", "-p")
+	result.AssertSuccess(t)
+
+	// Verify registry still contains the remote-tool entry
+	data, err := os.ReadFile(registryPath)
+	if err != nil {
+		t.Fatalf("failed to read registry: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "remote-tool") {
+		t.Errorf("sync should preserve registry entry for installed skill without local files, got:\n%s", content)
+	}
+	if !strings.Contains(content, "github.com/someone/remote-tool") {
+		t.Errorf("sync should preserve source in registry entry, got:\n%s", content)
 	}
 }
 

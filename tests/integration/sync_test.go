@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"skillshare/internal/testutil"
@@ -461,6 +462,41 @@ targets:
 	// Local directory should be preserved (warning issued but not deleted)
 	if !sb.FileExists(localSkillPath) {
 		t.Error("local skill directory should be preserved")
+	}
+}
+
+func TestSync_PreservesRegistryEntries(t *testing.T) {
+	sb := testutil.NewSandbox(t)
+	defer sb.Cleanup()
+
+	// Create a local skill that sync will discover
+	sb.CreateSkill("local-skill", map[string]string{"SKILL.md": "# Local"})
+
+	targetPath := sb.CreateTarget("claude")
+	sb.WriteConfig(`source: ` + sb.SourcePath + `
+mode: merge
+targets:
+  claude:
+    path: ` + targetPath + `
+`)
+
+	// Write a registry with a remote-installed skill that has NO files on disk.
+	// Sync must NOT prune this entry — registry is the source of truth for installations.
+	registryPath := filepath.Join(sb.SourcePath, "registry.yaml")
+	registryContent := "skills:\n  - name: remote-tool\n    source: github.com/someone/remote-tool\n"
+	os.WriteFile(registryPath, []byte(registryContent), 0644)
+
+	result := sb.RunCLI("sync")
+	result.AssertSuccess(t)
+
+	// Verify registry still contains the remote-tool entry
+	data, err := os.ReadFile(registryPath)
+	if err != nil {
+		t.Fatalf("failed to read registry: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "remote-tool") {
+		t.Errorf("sync should preserve registry entry for installed skill without local files, got:\n%s", content)
 	}
 }
 

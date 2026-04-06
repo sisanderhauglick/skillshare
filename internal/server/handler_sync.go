@@ -2,10 +2,8 @@ package server
 
 import (
 	"encoding/json"
-	"log"
 	"maps"
 	"net/http"
-	"path/filepath"
 	"time"
 
 	"skillshare/internal/config"
@@ -80,34 +78,9 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		warnings = append(warnings, "source directory is empty (0 skills)")
 	}
 
-	// Prune stale registry entries using already-discovered skills (avoids second walk).
-	// Uses defer so early returns from target errors still trigger cleanup.
-	if !body.DryRun {
-		defer func() {
-			live := make(map[string]bool, len(allSkills))
-			for _, sk := range allSkills {
-				live[sk.RelPath] = true
-			}
-			// Ignored skills still exist on disk — don't prune their registry entries
-			if ignoreStats != nil {
-				for _, p := range ignoreStats.IgnoredSkills {
-					live[p] = true
-				}
-			}
-			skillsOnly := s.IsProjectMode() // project registries also store agent entries
-			var pruneChanged bool
-			s.registry.Skills, pruneChanged = config.PruneStaleSkills(s.registry.Skills, live, skillsOnly)
-			if pruneChanged {
-				regDir := s.cfg.RegistryDir
-				if s.IsProjectMode() {
-					regDir = filepath.Join(s.projectRoot, ".skillshare")
-				}
-				if err := s.registry.Save(regDir); err != nil {
-					log.Printf("warning: failed to save registry after prune: %v", err)
-				}
-			}
-		}()
-	}
+	// Registry entries are managed by install/uninstall, not sync.
+	// Sync only manages symlinks — it must not prune registry entries
+	// for installed skills whose files may be missing from disk.
 
 	results := make([]syncTargetResult, 0)
 

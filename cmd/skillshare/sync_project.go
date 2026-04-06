@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"skillshare/internal/config"
@@ -136,24 +135,9 @@ func cmdSyncProject(root string, dryRun, force, jsonOutput bool) (syncLogStats, 
 			}
 		}
 
-		// Prune stale registry entries using already-discovered skills (avoids second walk)
-		live := make(map[string]bool, len(discoveredSkills))
-		for _, s := range discoveredSkills {
-			live[s.RelPath] = true
-		}
-		// Ignored skills still exist on disk — don't prune their registry entries
-		if ignoreStats != nil {
-			for _, p := range ignoreStats.IgnoredSkills {
-				live[p] = true
-			}
-		}
-		var pruneChanged bool
-		runtime.registry.Skills, pruneChanged = config.PruneStaleSkills(runtime.registry.Skills, live, true)
-		if pruneChanged {
-			if err := runtime.registry.Save(filepath.Join(root, ".skillshare")); err != nil {
-				fmt.Fprintf(os.Stderr, "warning: failed to save registry after prune: %v\n", err)
-			}
-		}
+		// Registry entries are managed by install/uninstall, not sync.
+		// Sync only manages symlinks — it must not prune registry entries
+		// for installed skills whose files may be missing from disk.
 	}
 
 	if failedTargets > 0 {
