@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"skillshare/internal/config"
@@ -59,6 +60,53 @@ func cmdCollectAgents(cfg *config.Config, dryRun, jsonOutput bool, start time.Ti
 			fmt.Println()
 			ui.Info("Collected %d agent(s) to %s", len(allCollected), agentsSource)
 		}
+	}
+
+	return nil
+}
+
+// cmdCollectProjectAgents collects non-symlinked agent .md files from project targets.
+func cmdCollectProjectAgents(projectRoot string) error {
+	agentsSource := filepath.Join(projectRoot, ".skillshare", "agents")
+	if err := os.MkdirAll(agentsSource, 0755); err != nil {
+		return fmt.Errorf("cannot create project agents directory: %w", err)
+	}
+
+	projCfg, err := config.LoadProject(projectRoot)
+	if err != nil {
+		return fmt.Errorf("cannot load project config: %w", err)
+	}
+
+	builtinAgents := config.ProjectAgentTargets()
+	var allCollected []string
+
+	ui.Header(ui.WithModeLabel("Collect agents"))
+
+	for _, entry := range projCfg.Targets {
+		agentPath := resolveProjectAgentTargetPath(entry, builtinAgents, projectRoot)
+		if agentPath == "" {
+			continue
+		}
+		if _, statErr := os.Stat(agentPath); statErr != nil {
+			continue
+		}
+
+		collected, collectErr := sync.CollectAgents(agentPath, agentsSource, false, os.Stdout)
+		if collectErr != nil {
+			ui.Warning("%s: collect failed: %v", entry.Name, collectErr)
+			continue
+		}
+		if len(collected) > 0 {
+			allCollected = append(allCollected, collected...)
+			ui.Success("%s: collected %d agent(s)", entry.Name, len(collected))
+		}
+	}
+
+	if len(allCollected) == 0 {
+		ui.Info("No local agents found to collect")
+	} else {
+		fmt.Println()
+		ui.Info("Collected %d agent(s) to %s", len(allCollected), agentsSource)
 	}
 
 	return nil

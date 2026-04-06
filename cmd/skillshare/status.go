@@ -103,14 +103,10 @@ func cmdStatus(args []string) error {
 				return fmt.Errorf("unexpected arguments: %v", rest)
 			}
 		}
-		if kind == kindAgents {
-			// Agent-only project status is not yet implemented
-			return fmt.Errorf("status agents is not yet supported in project mode")
-		}
 		if jsonOutput {
-			return cmdStatusProjectJSON(cwd)
+			return cmdStatusProjectJSON(cwd, kind)
 		}
-		return cmdStatusProject(cwd)
+		return cmdStatusProject(cwd, kind)
 	}
 
 	cfg, err := config.Load()

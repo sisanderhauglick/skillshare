@@ -9,12 +9,13 @@ import (
 	"skillshare/internal/audit"
 	"skillshare/internal/config"
 	"skillshare/internal/git"
+	"skillshare/internal/resource"
 	"skillshare/internal/skillignore"
 	"skillshare/internal/sync"
 	"skillshare/internal/ui"
 )
 
-func cmdStatusProject(root string) error {
+func cmdStatusProject(root string, kind resourceKindFilter) error {
 	if !projectConfigExists(root) {
 		if err := performProjectInit(root, projectInitOptions{}); err != nil {
 			return err
@@ -26,34 +27,40 @@ func cmdStatusProject(root string) error {
 		return err
 	}
 
-	sp := ui.StartSpinner("Discovering skills...")
-	discovered, stats, discoverErr := sync.DiscoverSourceSkillsWithStats(runtime.sourcePath)
-	if discoverErr != nil {
-		discovered = nil
-	}
-	trackedRepos := extractTrackedRepos(discovered)
-	sp.Stop()
+	if kind.IncludesSkills() {
+		sp := ui.StartSpinner("Discovering skills...")
+		discovered, stats, discoverErr := sync.DiscoverSourceSkillsWithStats(runtime.sourcePath)
+		if discoverErr != nil {
+			discovered = nil
+		}
+		trackedRepos := extractTrackedRepos(discovered)
+		sp.Stop()
 
-	printProjectSourceStatus(runtime.sourcePath, len(discovered), stats)
-	printProjectTrackedReposStatus(runtime.sourcePath, discovered, trackedRepos)
-	if err := printProjectTargetsStatus(runtime, discovered); err != nil {
-		return err
+		printProjectSourceStatus(runtime.sourcePath, len(discovered), stats)
+		printProjectTrackedReposStatus(runtime.sourcePath, discovered, trackedRepos)
+		if err := printProjectTargetsStatus(runtime, discovered); err != nil {
+			return err
+		}
+
+		// Extras
+		if len(runtime.config.Extras) > 0 {
+			ui.Header("Extras (project)")
+			printExtrasStatus(runtime.config.Extras, func(extra config.ExtraConfig) string {
+				return config.ExtrasSourceDirProject(root, extra.Name)
+			})
+		}
+
+		printAuditStatus(runtime.config.Audit)
 	}
 
-	// Extras
-	if len(runtime.config.Extras) > 0 {
-		ui.Header("Extras (project)")
-		printExtrasStatus(runtime.config.Extras, func(extra config.ExtraConfig) string {
-			return config.ExtrasSourceDirProject(root, extra.Name)
-		})
+	if kind.IncludesAgents() {
+		printProjectAgentStatus(runtime)
 	}
-
-	printAuditStatus(runtime.config.Audit)
 
 	return nil
 }
 
-func cmdStatusProjectJSON(root string) error {
+func cmdStatusProjectJSON(root string, kind resourceKindFilter) error {
 	if !projectConfigExists(root) {
 		if err := performProjectInit(root, projectInitOptions{}); err != nil {
 			return writeJSONError(err)
@@ -65,60 +72,142 @@ func cmdStatusProjectJSON(root string) error {
 		return writeJSONError(err)
 	}
 
-	discovered, stats, _ := sync.DiscoverSourceSkillsWithStats(runtime.sourcePath)
-	trackedRepos := extractTrackedRepos(discovered)
-
 	output := statusJSONOutput{
-		Source: statusJSONSource{
+		Version: version,
+	}
+
+	if kind.IncludesSkills() {
+		discovered, stats, _ := sync.DiscoverSourceSkillsWithStats(runtime.sourcePath)
+		trackedRepos := extractTrackedRepos(discovered)
+
+		output.Source = statusJSONSource{
 			Path:        runtime.sourcePath,
 			Exists:      dirExists(runtime.sourcePath),
 			Skillignore: buildSkillignoreJSON(stats),
-		},
-		SkillCount: len(discovered),
-		Version:    version,
-	}
-
-	// Tracked repos (parallel dirty checks)
-	output.TrackedRepos = buildTrackedRepoJSON(runtime.sourcePath, trackedRepos, discovered)
-
-	// Targets
-	for _, entry := range runtime.config.Targets {
-		target, ok := runtime.targets[entry.Name]
-		if !ok {
-			continue
 		}
-		sc := target.SkillsConfig()
-		mode := sc.Mode
-		if mode == "" {
-			mode = "merge"
+		output.SkillCount = len(discovered)
+		output.TrackedRepos = buildTrackedRepoJSON(runtime.sourcePath, trackedRepos, discovered)
+
+		for _, entry := range runtime.config.Targets {
+			target, ok := runtime.targets[entry.Name]
+			if !ok {
+				continue
+			}
+			sc := target.SkillsConfig()
+			mode := sc.Mode
+			if mode == "" {
+				mode = "merge"
+			}
+			res := getTargetStatusDetail(target, runtime.sourcePath, mode)
+			output.Targets = append(output.Targets, statusJSONTarget{
+				Name:        entry.Name,
+				Path:        sc.Path,
+				Mode:        mode,
+				Status:      res.statusStr,
+				SyncedCount: res.syncedCount,
+				Include:     sc.Include,
+				Exclude:     sc.Exclude,
+			})
 		}
-		res := getTargetStatusDetail(target, runtime.sourcePath, mode)
-		output.Targets = append(output.Targets, statusJSONTarget{
-			Name:        entry.Name,
-			Path:        sc.Path,
-			Mode:        mode,
-			Status:      res.statusStr,
-			SyncedCount: res.syncedCount,
-			Include:     sc.Include,
-			Exclude:     sc.Exclude,
+
+		policy := audit.ResolvePolicy(audit.PolicyInputs{
+			ConfigProfile:   runtime.config.Audit.Profile,
+			ConfigThreshold: runtime.config.Audit.BlockThreshold,
+			ConfigDedupe:    runtime.config.Audit.DedupeMode,
+			ConfigAnalyzers: runtime.config.Audit.EnabledAnalyzers,
 		})
+		output.Audit = statusJSONAudit{
+			Profile:   string(policy.Profile),
+			Threshold: policy.Threshold,
+			Dedupe:    string(policy.DedupeMode),
+			Analyzers: policy.EffectiveAnalyzers(),
+		}
 	}
 
-	// Audit
-	policy := audit.ResolvePolicy(audit.PolicyInputs{
-		ConfigProfile:   runtime.config.Audit.Profile,
-		ConfigThreshold: runtime.config.Audit.BlockThreshold,
-		ConfigDedupe:    runtime.config.Audit.DedupeMode,
-		ConfigAnalyzers: runtime.config.Audit.EnabledAnalyzers,
-	})
-	output.Audit = statusJSONAudit{
-		Profile:   string(policy.Profile),
-		Threshold: policy.Threshold,
-		Dedupe:    string(policy.DedupeMode),
-		Analyzers: policy.EffectiveAnalyzers(),
+	if kind.IncludesAgents() {
+		output.Agents = buildProjectAgentStatusJSON(runtime)
 	}
 
 	return writeJSON(&output)
+}
+
+// printProjectAgentStatus prints agent status for project mode (text).
+func printProjectAgentStatus(rt *projectRuntime) {
+	ui.Header("Agents (project)")
+
+	exists := dirExists(rt.agentsSourcePath)
+	if !exists {
+		ui.Info("Source: .skillshare/agents/ (not created)")
+		return
+	}
+
+	agents, _ := resource.AgentKind{}.Discover(rt.agentsSourcePath)
+	ui.Info("Source: .skillshare/agents/ (%d agents)", len(agents))
+
+	builtinAgents := config.ProjectAgentTargets()
+	for _, entry := range rt.config.Targets {
+		agentPath := resolveProjectAgentTargetPath(entry, builtinAgents, rt.root)
+		if agentPath == "" {
+			continue
+		}
+
+		linked := countLinkedAgents(agentPath)
+		driftLabel := ""
+		if linked != len(agents) && len(agents) > 0 {
+			driftLabel = ui.Yellow + " (drift)" + ui.Reset
+		}
+		ui.Info("  %s: %s (%d/%d linked)%s", entry.Name, agentPath, linked, len(agents), driftLabel)
+	}
+}
+
+// buildProjectAgentStatusJSON builds the agents section for project status --json.
+func buildProjectAgentStatusJSON(rt *projectRuntime) *statusJSONAgents {
+	exists := dirExists(rt.agentsSourcePath)
+	result := &statusJSONAgents{
+		Source: rt.agentsSourcePath,
+		Exists: exists,
+	}
+
+	if !exists {
+		return result
+	}
+
+	agents, _ := resource.AgentKind{}.Discover(rt.agentsSourcePath)
+	result.Count = len(agents)
+
+	builtinAgents := config.ProjectAgentTargets()
+	for _, entry := range rt.config.Targets {
+		agentPath := resolveProjectAgentTargetPath(entry, builtinAgents, rt.root)
+		if agentPath == "" {
+			continue
+		}
+
+		linked := countLinkedAgents(agentPath)
+		result.Targets = append(result.Targets, statusJSONAgentTarget{
+			Name:     entry.Name,
+			Path:     agentPath,
+			Expected: len(agents),
+			Linked:   linked,
+			Drift:    linked != len(agents) && len(agents) > 0,
+		})
+	}
+
+	return result
+}
+
+// resolveProjectAgentTargetPath resolves the agent path for a project target entry.
+func resolveProjectAgentTargetPath(entry config.ProjectTargetEntry, builtinAgents map[string]config.TargetConfig, projectRoot string) string {
+	ac := entry.AgentsConfig()
+	if ac.Path != "" {
+		if filepath.IsAbs(ac.Path) {
+			return config.ExpandPath(ac.Path)
+		}
+		return filepath.Join(projectRoot, ac.Path)
+	}
+	if builtin, ok := builtinAgents[entry.Name]; ok {
+		return config.ExpandPath(builtin.Path)
+	}
+	return ""
 }
 
 func printProjectSourceStatus(sourcePath string, skillCount int, stats *skillignore.IgnoreStats) {

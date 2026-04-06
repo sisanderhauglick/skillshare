@@ -12,7 +12,7 @@ import (
 
 func cmdDiffProject(root, targetName string, kind resourceKindFilter, opts diffRenderOpts, start time.Time) error {
 	if kind == kindAgents {
-		return fmt.Errorf("diff agents is not yet supported in project mode")
+		return diffProjectAgents(root, targetName, opts, start)
 	}
 	if !projectConfigExists(root) {
 		if err := performProjectInit(root, projectInitOptions{}); err != nil {

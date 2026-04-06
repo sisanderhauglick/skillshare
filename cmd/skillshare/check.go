@@ -192,7 +192,35 @@ func cmdCheck(args []string) error {
 	if mode == modeProject {
 		cfgPath = config.ProjectConfigPath(cwd)
 		if kind == kindAgents {
-			return fmt.Errorf("check agents is not yet supported in project mode")
+			agentsDir := filepath.Join(cwd, ".skillshare", "agents")
+			agentResults := check.CheckAgents(agentsDir)
+			if opts.json {
+				out, _ := json.MarshalIndent(agentResults, "", "  ")
+				fmt.Println(string(out))
+			} else {
+				ui.Header(ui.WithModeLabel("Checking agents"))
+				ui.StepStart("Agents source", agentsDir)
+				if len(agentResults) == 0 {
+					ui.Info("No agents found")
+				} else {
+					fmt.Println()
+					for _, r := range agentResults {
+						switch r.Status {
+						case "up_to_date":
+							ui.ListItem("success", r.Name, "up to date")
+						case "drifted":
+							ui.ListItem("warning", r.Name, r.Message)
+						case "local":
+							ui.ListItem("info", r.Name, "local agent")
+						case "error":
+							ui.ListItem("error", r.Name, r.Message)
+						}
+					}
+				}
+				fmt.Println()
+			}
+			logCheckOp(cfgPath, 0, len(agentResults), 0, 0, scope, start, nil)
+			return nil
 		}
 		cmdErr := cmdCheckProject(cwd, opts)
 		logCheckOp(cfgPath, 0, 0, 0, 0, scope, start, cmdErr)

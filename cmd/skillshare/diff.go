@@ -368,6 +368,11 @@ func cmdDiffGlobal(targetName string, kind resourceKindFilter, opts diffRenderOp
 		return err
 	}
 
+	// Agent-only diff
+	if kind == kindAgents {
+		return diffGlobalAgents(cfg, targetName, opts, start)
+	}
+
 	var spinner *ui.Spinner
 	if !opts.jsonOutput {
 		spinner = ui.StartSpinner("Discovering skills")

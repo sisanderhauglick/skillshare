@@ -183,14 +183,15 @@ func cmdAudit(args []string) error {
 			cfgPath = config.ConfigPath()
 		}
 	} else if mode == modeProject {
-		if kind == kindAgents {
-			return fmt.Errorf("audit agents is not yet supported in project mode")
-		}
 		rt, err := loadProjectRuntime(cwd)
 		if err != nil {
 			return err
 		}
-		sourcePath = rt.sourcePath
+		if kind == kindAgents {
+			sourcePath = rt.agentsSourcePath
+		} else {
+			sourcePath = rt.sourcePath
+		}
 		projectRoot = cwd
 		defaultThreshold = rt.config.Audit.BlockThreshold
 		configProfile = rt.config.Audit.Profile
