@@ -97,6 +97,7 @@ type listTUIModel struct {
 	contentScroll   int
 	contentText     string // current file content (rendered)
 	contentSkillKey string // RelPath of skill being viewed
+	contentKind     string // "skill" or "agent" — set when entering content view
 	termHeight      int
 	treeAllNodes    []treeNode // complete flat tree (includes collapsed children)
 	treeNodes       []treeNode // visible nodes (collapsed children hidden)

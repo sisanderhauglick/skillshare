@@ -139,12 +139,37 @@ func buildVisibleNodes(all []treeNode) []treeNode {
 
 // loadContentForSkill populates the content viewer fields for the given skill.
 func loadContentForSkill(m *listTUIModel, e skillEntry) {
-	skillDir := filepath.Join(m.sourcePath, e.RelPath)
 	m.contentSkillKey = e.RelPath
+	m.contentKind = e.Kind
 	m.contentScroll = 0
 	m.treeCursor = 0
 	m.treeScroll = 0
 
+	if e.Kind == "agent" {
+		// Agents are single .md files — render directly, minimal tree
+		agentFile := filepath.Join(m.agentsSourcePath, e.RelPath)
+		data, err := os.ReadFile(agentFile)
+		if err != nil {
+			m.contentText = fmt.Sprintf("(error reading agent: %v)", err)
+			m.treeAllNodes = nil
+			m.treeNodes = nil
+			return
+		}
+		raw := strings.TrimSpace(string(data))
+		if raw == "" {
+			m.contentText = "(empty)"
+		} else {
+			w := m.contentPanelWidth()
+			m.contentText = hardWrapContent(renderMarkdown(raw, w), w)
+		}
+		// Single-file tree: just the agent .md file
+		m.treeAllNodes = []treeNode{{name: filepath.Base(e.RelPath), relPath: e.RelPath}}
+		m.treeNodes = m.treeAllNodes
+		return
+	}
+
+	// Existing skill directory logic
+	skillDir := filepath.Join(m.sourcePath, e.RelPath)
 	m.treeAllNodes = buildTreeNodes(skillDir)
 	m.treeNodes = buildVisibleNodes(m.treeAllNodes)
 
@@ -172,8 +197,13 @@ func loadContentFile(m *listTUIModel) {
 		return
 	}
 
-	skillDir := filepath.Join(m.sourcePath, m.contentSkillKey)
-	filePath := filepath.Join(skillDir, node.relPath)
+	var filePath string
+	if m.contentKind == "agent" {
+		filePath = filepath.Join(m.agentsSourcePath, node.relPath)
+	} else {
+		skillDir := filepath.Join(m.sourcePath, m.contentSkillKey)
+		filePath = filepath.Join(skillDir, node.relPath)
+	}
 
 	var rawText string
 	if node.name == "SKILL.md" {
