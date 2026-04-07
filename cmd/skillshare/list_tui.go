@@ -136,7 +136,7 @@ func newListTUIModel(loadFn listLoadFn, skills []skillItem, totalCount int, mode
 	fi.Prompt = "/ "
 	fi.PromptStyle = tc.Filter
 	fi.Cursor.Style = tc.Filter
-	fi.Placeholder = "filter or t:tracked g:group r:repo"
+	fi.Placeholder = "filter or t:tracked g:group r:repo k:kind"
 
 	m := listTUIModel{
 		list:        l,
@@ -566,7 +566,7 @@ func (m listTUIModel) viewSplit() string {
 	b.WriteString("\n")
 	helpText := "↑↓ navigate  ←→ page  / filter  Ctrl+d/u detail  Enter view  A audit  U update  E enable/disable  X uninstall  q quit"
 	if m.filtering {
-		helpText = "t:type g:group r:repo  Enter lock  Esc clear  q quit"
+		helpText = "t:type g:group r:repo k:kind  Enter lock  Esc clear  q quit"
 	}
 	help := appendScrollInfo(helpText, scrollInfo)
 	b.WriteString(tc.Help.Render(help))
@@ -605,7 +605,7 @@ func (m listTUIModel) viewVertical() string {
 	b.WriteString("\n")
 	helpText := "↑↓ navigate  ←→ page  / filter  Ctrl+d/u detail  Enter view  A audit  U update  E enable/disable  X uninstall  q quit"
 	if m.filtering {
-		helpText = "t:type g:group r:repo  Enter lock  Esc clear  q quit"
+		helpText = "t:type g:group r:repo k:kind  Enter lock  Esc clear  q quit"
 	}
 	help := appendScrollInfo(helpText, scrollInfo)
 	b.WriteString(tc.Help.Render(help))
