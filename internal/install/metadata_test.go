@@ -307,3 +307,88 @@ func TestMetadataPath(t *testing.T) {
 		t.Errorf("MetadataPath = %q, want %q", got, want)
 	}
 }
+
+func TestMetadataStore_SetFromSource(t *testing.T) {
+	store := NewMetadataStore()
+	source := &Source{
+		Raw:      "github.com/user/repo",
+		CloneURL: "https://github.com/user/repo.git",
+		Branch:   "dev",
+		Subdir:   "skills\\review",
+	}
+	source.Type = SourceTypeGitHub
+
+	entry := store.SetFromSource("review", source)
+	if entry.Source != "github.com/user/repo" {
+		t.Errorf("source = %q", entry.Source)
+	}
+	if entry.RepoURL != "https://github.com/user/repo.git" {
+		t.Errorf("repo_url = %q", entry.RepoURL)
+	}
+	if entry.Branch != "dev" {
+		t.Errorf("branch = %q", entry.Branch)
+	}
+	if entry.Subdir != "skills/review" {
+		t.Errorf("subdir = %q, want forward slashes", entry.Subdir)
+	}
+	if entry.InstalledAt.IsZero() {
+		t.Error("installed_at should be set")
+	}
+	if !store.Has("review") {
+		t.Error("entry not stored")
+	}
+}
+
+func TestMetadataEntry_ComputeEntryHashes(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("# Test"), 0644)
+	os.MkdirAll(filepath.Join(dir, ".git"), 0755)
+
+	entry := &MetadataEntry{}
+	if err := entry.ComputeEntryHashes(dir); err != nil {
+		t.Fatalf("ComputeEntryHashes failed: %v", err)
+	}
+	if _, ok := entry.FileHashes["SKILL.md"]; !ok {
+		t.Error("expected SKILL.md in file hashes")
+	}
+	if len(entry.FileHashes) != 1 {
+		t.Errorf("expected 1 hash (SKILL.md only), got %d: %v", len(entry.FileHashes), entry.FileHashes)
+	}
+}
+
+func TestMetadataStore_RefreshHashes(t *testing.T) {
+	dir := t.TempDir()
+	skillDir := filepath.Join(dir, "my-skill")
+	os.MkdirAll(skillDir, 0755)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("# V1"), 0644)
+
+	store := NewMetadataStore()
+	entry := &MetadataEntry{
+		Source:     "test",
+		FileHashes: map[string]string{"SKILL.md": "sha256:old"},
+	}
+	store.Set("my-skill", entry)
+
+	store.RefreshHashes("my-skill", skillDir)
+
+	refreshed := store.Get("my-skill")
+	if refreshed.FileHashes["SKILL.md"] == "sha256:old" {
+		t.Error("hashes should have been refreshed")
+	}
+	if refreshed.FileHashes["SKILL.md"] == "" {
+		t.Error("hash should not be empty after refresh")
+	}
+}
+
+func TestMetadataStore_RefreshHashes_NoOp(t *testing.T) {
+	store := NewMetadataStore()
+	// No entry — should not panic
+	store.RefreshHashes("nonexistent", "/tmp")
+
+	// Entry without FileHashes — should not compute
+	store.Set("x", &MetadataEntry{Source: "s"})
+	store.RefreshHashes("x", "/tmp")
+	if store.Get("x").FileHashes != nil {
+		t.Error("should not compute hashes when FileHashes is nil")
+	}
+}

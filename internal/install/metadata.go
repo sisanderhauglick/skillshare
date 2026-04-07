@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -154,4 +155,47 @@ func (s *MetadataStore) Save(dir string) error {
 // MetadataPath returns the .metadata.json path for the given directory.
 func MetadataPath(dir string) string {
 	return filepath.Join(dir, MetadataFileName)
+}
+
+// SetFromSource creates an entry from a Source and stores it. Returns the entry.
+func (s *MetadataStore) SetFromSource(name string, src *Source) *MetadataEntry {
+	entry := &MetadataEntry{
+		Source:      src.Raw,
+		Type:        src.MetaType(),
+		InstalledAt: time.Now(),
+		Branch:      src.Branch,
+	}
+	if src.IsGit() {
+		entry.RepoURL = src.CloneURL
+	}
+	if src.HasSubdir() {
+		entry.Subdir = strings.ReplaceAll(src.Subdir, "\\", "/")
+	}
+	s.Entries[name] = entry
+	return entry
+}
+
+// ComputeEntryHashes walks skillPath and populates FileHashes with sha256 digests.
+// Delegates to ComputeFileHashes in meta.go.
+func (e *MetadataEntry) ComputeEntryHashes(skillPath string) error {
+	hashes, err := ComputeFileHashes(skillPath)
+	if err != nil {
+		return err
+	}
+	e.FileHashes = hashes
+	return nil
+}
+
+// RefreshHashes recomputes file hashes for an entry that already has them.
+// No-op if entry doesn't exist or has no FileHashes.
+func (s *MetadataStore) RefreshHashes(name, skillPath string) {
+	entry := s.Get(name)
+	if entry == nil || entry.FileHashes == nil {
+		return
+	}
+	hashes, err := ComputeFileHashes(skillPath)
+	if err != nil {
+		return
+	}
+	entry.FileHashes = hashes
 }

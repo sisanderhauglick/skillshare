@@ -97,6 +97,9 @@ func ComputeFileHashes(skillPath string) (map[string]string, error) {
 		if info.Name() == MetaFileName {
 			return nil
 		}
+		if info.Name() == MetadataFileName {
+			return nil
+		}
 
 		rel, relErr := filepath.Rel(skillPath, path)
 		if relErr != nil {
