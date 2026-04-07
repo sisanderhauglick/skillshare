@@ -285,3 +285,64 @@ func printSkillListCompact(skills []install.SkillInfo) {
 	}
 	ui.Info("... and %d more skill(s)", len(skills)-showCount)
 }
+
+// selectAgents routes agent selection through filter, all, or interactive TUI.
+func selectAgents(agents []install.AgentInfo, opts install.InstallOptions) ([]install.AgentInfo, error) {
+	switch {
+	case opts.HasAgentFilter():
+		matched, notFound := filterAgentsByName(agents, opts.AgentNames)
+		if len(notFound) > 0 {
+			return nil, fmt.Errorf("agents not found: %s", strings.Join(notFound, ", "))
+		}
+		return matched, nil
+	case opts.ShouldInstallAll():
+		return agents, nil
+	default:
+		return promptAgentInstallSelection(agents)
+	}
+}
+
+// filterAgentsByName returns agents matching any of the given names (case-insensitive).
+func filterAgentsByName(agents []install.AgentInfo, names []string) (matched []install.AgentInfo, notFound []string) {
+	nameSet := make(map[string]bool, len(names))
+	for _, n := range names {
+		nameSet[strings.ToLower(n)] = true
+	}
+	found := make(map[string]bool)
+	for _, a := range agents {
+		if nameSet[strings.ToLower(a.Name)] {
+			matched = append(matched, a)
+			found[strings.ToLower(a.Name)] = true
+		}
+	}
+	for _, n := range names {
+		if !found[strings.ToLower(n)] {
+			notFound = append(notFound, n)
+		}
+	}
+	return
+}
+
+// promptAgentInstallSelection shows a multi-select TUI for agent installation.
+func promptAgentInstallSelection(agents []install.AgentInfo) ([]install.AgentInfo, error) {
+	items := make([]checklistItemData, len(agents))
+	for i, a := range agents {
+		items[i] = checklistItemData{label: a.Name, desc: a.FileName}
+	}
+	indices, err := runChecklistTUI(checklistConfig{
+		title:    "Select agents to install",
+		items:    items,
+		itemName: "agent",
+	})
+	if err != nil {
+		return nil, err
+	}
+	if indices == nil {
+		return nil, nil // cancelled
+	}
+	selected := make([]install.AgentInfo, len(indices))
+	for i, idx := range indices {
+		selected[i] = agents[idx]
+	}
+	return selected, nil
+}
