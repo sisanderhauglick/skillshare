@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"skillshare/internal/install"
+	"skillshare/internal/resource"
 	"skillshare/internal/utils"
 )
 
@@ -22,33 +22,32 @@ type AgentCheckResult struct {
 
 // CheckAgents scans the agents source directory for installed agents and
 // compares their file hashes against metadata to detect drift.
+// Uses resource.AgentKind{}.Discover() to recurse into subdirectories.
 func CheckAgents(agentsDir string) []AgentCheckResult {
-	entries, err := os.ReadDir(agentsDir)
+	discovered, err := resource.AgentKind{}.Discover(agentsDir)
 	if err != nil {
 		return nil
 	}
 
 	var results []AgentCheckResult
-
-	for _, entry := range entries {
-		name := entry.Name()
-
-		// Agent .md files
-		if !entry.IsDir() && strings.HasSuffix(strings.ToLower(name), ".md") {
-			agentName := strings.TrimSuffix(name, ".md")
-			result := checkOneAgent(agentsDir, agentName, name)
-			results = append(results, result)
-		}
+	for _, d := range discovered {
+		result := checkOneAgent(d.SourcePath, d.RelPath)
+		results = append(results, result)
 	}
 
 	return results
 }
 
-func checkOneAgent(agentsDir, agentName, fileName string) AgentCheckResult {
-	result := AgentCheckResult{Name: agentName}
+// checkOneAgent checks a single agent file. sourcePath is the absolute path
+// to the .md file; relPath is relative to the agents root (e.g. "demo/code-reviewer.md").
+func checkOneAgent(sourcePath, relPath string) AgentCheckResult {
+	fileName := filepath.Base(relPath)
+	agentName := fileName[:len(fileName)-len(".md")]
+	result := AgentCheckResult{Name: relPath[:len(relPath)-len(".md")]}
 
-	// Look for metadata file: <name>.skillshare-meta.json
-	metaPath := filepath.Join(agentsDir, agentName+".skillshare-meta.json")
+	// Look for sidecar metadata: <basename>.skillshare-meta.json alongside the .md file
+	dir := filepath.Dir(sourcePath)
+	metaPath := filepath.Join(dir, agentName+".skillshare-meta.json")
 	metaData, err := os.ReadFile(metaPath)
 	if err != nil {
 		result.Status = "local"
@@ -67,13 +66,12 @@ func checkOneAgent(agentsDir, agentName, fileName string) AgentCheckResult {
 	result.RepoURL = meta.RepoURL
 
 	// Compare file hash
-	agentPath := filepath.Join(agentsDir, fileName)
 	if meta.FileHashes == nil || meta.FileHashes[fileName] == "" {
 		result.Status = "local"
 		return result
 	}
 
-	currentHash, err := utils.FileHashFormatted(agentPath)
+	currentHash, err := utils.FileHashFormatted(sourcePath)
 	if err != nil {
 		result.Status = "error"
 		result.Message = "cannot hash file"

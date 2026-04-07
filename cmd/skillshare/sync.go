@@ -143,9 +143,10 @@ func cmdSync(args []string) error {
 			if hasAll {
 				projCfg, loadErr := config.LoadProject(cwd)
 				if loadErr == nil && len(projCfg.Extras) > 0 {
+					agentPaths := collectAgentTargetPathsProject(cwd)
 					extrasEntries := runExtrasSyncEntries(projCfg.Extras, func(extra config.ExtraConfig) string {
 						return config.ExtrasSourceDirProject(cwd, extra.Name)
-					}, dryRun, force, cwd)
+					}, dryRun, force, cwd, agentPaths)
 					return syncOutputJSON(results, dryRun, start, projIgnoreStats, err, extrasEntries)
 				}
 			}
@@ -276,9 +277,10 @@ func cmdSync(args []string) error {
 
 	if jsonOutput {
 		if hasAll && len(cfg.Extras) > 0 {
+			agentPaths := collectAgentTargetPathsGlobal(cfg)
 			extrasEntries := runExtrasSyncEntries(cfg.Extras, func(extra config.ExtraConfig) string {
 				return config.ResolveExtrasSourceDir(extra, cfg.ExtrasSource, cfg.Source)
-			}, dryRun, force, "")
+			}, dryRun, force, "", agentPaths)
 			return syncOutputJSON(results, dryRun, start, ignoreStats, syncErr, extrasEntries)
 		}
 		return syncOutputJSON(results, dryRun, start, ignoreStats, syncErr)

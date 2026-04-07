@@ -166,7 +166,7 @@ func reinstallAgent(agentsDir string, r check.AgentCheckResult) error {
 
 	installOpts := install.InstallOptions{
 		Kind:       "agent",
-		AgentNames: []string{r.Name},
+		AgentNames: []string{filepath.Base(r.Name)},
 		Force:      true,
 		Update:     true,
 	}
@@ -222,7 +222,8 @@ func filterAgentCheckResults(results []check.AgentCheckResult, names []string) [
 	}
 	var filtered []check.AgentCheckResult
 	for _, r := range results {
-		if nameSet[r.Name] {
+		// Match full path (e.g. "demo/code-reviewer") or basename (e.g. "code-reviewer")
+		if nameSet[r.Name] || nameSet[filepath.Base(r.Name)] {
 			filtered = append(filtered, r)
 		}
 	}
