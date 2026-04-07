@@ -1,6 +1,8 @@
 package install
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -204,5 +206,104 @@ func TestNewMetadataStore_InitialState(t *testing.T) {
 	}
 	if len(s.Entries) != 0 {
 		t.Errorf("Entries not empty on new store: %v", s.Entries)
+	}
+}
+
+func TestMetadataStore_SaveAndLoad(t *testing.T) {
+	dir := t.TempDir()
+	store := NewMetadataStore()
+	store.Set("my-skill", &MetadataEntry{
+		Source:      "github.com/user/repo",
+		Type:        "github",
+		InstalledAt: time.Date(2026, 4, 1, 10, 0, 0, 0, time.UTC),
+		FileHashes:  map[string]string{"SKILL.md": "sha256:abc123"},
+	})
+
+	if err := store.Save(dir); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	// Verify file exists
+	metaPath := filepath.Join(dir, MetadataFileName)
+	if _, err := os.Stat(metaPath); err != nil {
+		t.Fatalf("metadata file not created: %v", err)
+	}
+
+	// Load and verify round-trip
+	loaded, err := LoadMetadata(dir)
+	if err != nil {
+		t.Fatalf("LoadMetadata failed: %v", err)
+	}
+	if loaded.Version != 1 {
+		t.Errorf("version = %d, want 1", loaded.Version)
+	}
+	entry := loaded.Get("my-skill")
+	if entry == nil {
+		t.Fatal("expected entry, got nil")
+	}
+	if entry.Source != "github.com/user/repo" {
+		t.Errorf("source = %q, want %q", entry.Source, "github.com/user/repo")
+	}
+	if entry.FileHashes["SKILL.md"] != "sha256:abc123" {
+		t.Errorf("file hash mismatch")
+	}
+}
+
+func TestLoadMetadata_EmptyDir(t *testing.T) {
+	dir := t.TempDir()
+	store, err := LoadMetadata(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if store.Version != 1 {
+		t.Errorf("version = %d, want 1", store.Version)
+	}
+	if len(store.Entries) != 0 {
+		t.Errorf("expected empty entries, got %d", len(store.Entries))
+	}
+}
+
+func TestLoadMetadata_InvalidJSON(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, MetadataFileName), []byte("{invalid"), 0644)
+	_, err := LoadMetadata(dir)
+	if err == nil {
+		t.Fatal("expected error for invalid JSON")
+	}
+}
+
+func TestMetadataStore_SaveAtomic_NoTempFiles(t *testing.T) {
+	dir := t.TempDir()
+	store := NewMetadataStore()
+	store.Set("a", &MetadataEntry{Source: "s1"})
+	if err := store.Save(dir); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if e.Name() != MetadataFileName {
+			t.Errorf("unexpected file left behind: %s", e.Name())
+		}
+	}
+}
+
+func TestMetadataStore_SaveCreatesDir(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "nested", "dir")
+	store := NewMetadataStore()
+	store.Set("x", &MetadataEntry{Source: "s"})
+	if err := store.Save(dir); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, MetadataFileName)); err != nil {
+		t.Fatalf("file should exist in nested dir: %v", err)
+	}
+}
+
+func TestMetadataPath(t *testing.T) {
+	got := MetadataPath("/some/dir")
+	want := filepath.Join("/some/dir", ".metadata.json")
+	if got != want {
+		t.Errorf("MetadataPath = %q, want %q", got, want)
 	}
 }

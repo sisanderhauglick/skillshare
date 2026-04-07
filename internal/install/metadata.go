@@ -1,6 +1,10 @@
 package install
 
 import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"time"
 )
@@ -88,4 +92,66 @@ func (e *MetadataEntry) FullName() string {
 		return e.Group + "/" + e.Name
 	}
 	return e.Name
+}
+
+// LoadMetadata reads .metadata.json from the given directory.
+// Returns an empty store (version 1) if the file does not exist.
+func LoadMetadata(dir string) (*MetadataStore, error) {
+	path := filepath.Join(dir, MetadataFileName)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return NewMetadataStore(), nil
+		}
+		return nil, fmt.Errorf("failed to read metadata: %w", err)
+	}
+
+	var store MetadataStore
+	if err := json.Unmarshal(data, &store); err != nil {
+		return nil, fmt.Errorf("failed to parse metadata: %w", err)
+	}
+	if store.Entries == nil {
+		store.Entries = make(map[string]*MetadataEntry)
+	}
+	return &store, nil
+}
+
+// Save writes .metadata.json atomically (temp file → rename).
+func (s *MetadataStore) Save(dir string) error {
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	data, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+	data = append(data, '\n')
+
+	target := filepath.Join(dir, MetadataFileName)
+	tmp, err := os.CreateTemp(dir, ".metadata-*.tmp")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tmpName := tmp.Name()
+
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return fmt.Errorf("failed to write temp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("failed to close temp file: %w", err)
+	}
+	if err := os.Rename(tmpName, target); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("failed to rename temp file: %w", err)
+	}
+	return nil
+}
+
+// MetadataPath returns the .metadata.json path for the given directory.
+func MetadataPath(dir string) string {
+	return filepath.Join(dir, MetadataFileName)
 }
