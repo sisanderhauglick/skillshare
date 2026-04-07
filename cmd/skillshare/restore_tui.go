@@ -24,6 +24,16 @@ import (
 // Left-right split layout: list on left, detail panel on right.
 // ---------------------------------------------------------------------------
 
+// isAgentBackupEntry returns true if the backup entry name represents an agent backup.
+func isAgentBackupEntry(name string) bool {
+	return strings.HasSuffix(name, "-agents")
+}
+
+// agentBaseTarget returns the base target name by stripping the "-agents" suffix.
+func agentBaseTarget(name string) string {
+	return strings.TrimSuffix(name, "-agents")
+}
+
 // restorePhase tracks which screen is active.
 type restorePhase int
 
@@ -45,7 +55,11 @@ type restoreTargetItem struct {
 }
 
 func (i restoreTargetItem) Title() string {
-	return i.summary.TargetName
+	name := i.summary.TargetName
+	if isAgentBackupEntry(name) {
+		return tc.Cyan.Render("[A]") + " " + agentBaseTarget(name)
+	}
+	return name
 }
 func (i restoreTargetItem) Description() string {
 	return fmt.Sprintf("%d backup(s), latest: %s",
@@ -462,14 +476,34 @@ func (m restoreTUIModel) startRestore() (tea.Model, tea.Cmd) {
 
 	cmd := func() tea.Msg {
 		start := time.Now()
-		targetCfg, ok := targets[targetName]
-		if !ok {
+
+		// Resolve destination path — agent backups restore to the agent directory.
+		var destPath string
+		if isAgentBackupEntry(targetName) {
+			baseName := agentBaseTarget(targetName)
+			if tc, ok := targets[baseName]; ok {
+				if ac := tc.AgentsConfig(); ac.Path != "" {
+					destPath = config.ExpandPath(ac.Path)
+				}
+			}
+			if destPath == "" {
+				builtinAgents := config.DefaultAgentTargets()
+				if bt, ok := builtinAgents[baseName]; ok {
+					destPath = config.ExpandPath(bt.Path)
+				}
+			}
+		} else {
+			if tc, ok := targets[targetName]; ok {
+				destPath = tc.SkillsConfig().Path
+			}
+		}
+		if destPath == "" {
 			return restoreDoneMsg{err: fmt.Errorf("target '%s' not found in config", targetName)}
 		}
 
 		backupPath := filepath.Dir(version.Dir)
 		opts := backup.RestoreOptions{Force: true}
-		err := backup.RestoreToPath(backupPath, targetName, targetCfg.SkillsConfig().Path, opts)
+		err := backup.RestoreToPath(backupPath, targetName, destPath, opts)
 
 		e := oplog.NewEntry("restore", statusFromErr(err), time.Since(start))
 		e.Args = map[string]any{"target": targetName, "from": version.Label, "via": "tui"}
@@ -845,8 +879,25 @@ func (m restoreTUIModel) renderTargetDetail(s backup.TargetBackupSummary) string
 
 	row("Target:  ", s.TargetName)
 
-	// Target path and current state
-	if t, ok := m.targets[s.TargetName]; ok {
+	// Target path and current state — agent entries resolve via AgentsConfig or builtin defaults.
+	if isAgentBackupEntry(s.TargetName) {
+		baseName := agentBaseTarget(s.TargetName)
+		var agentPath string
+		if t, ok := m.targets[baseName]; ok {
+			if ac := t.AgentsConfig(); ac.Path != "" {
+				agentPath = config.ExpandPath(ac.Path)
+			}
+		}
+		if agentPath == "" {
+			if bt, ok := config.DefaultAgentTargets()[baseName]; ok {
+				agentPath = config.ExpandPath(bt.Path)
+			}
+		}
+		if agentPath != "" {
+			row("Path:    ", agentPath)
+			row("Status:  ", describeTargetState(agentPath))
+		}
+	} else if t, ok := m.targets[s.TargetName]; ok {
 		sc := t.SkillsConfig()
 		row("Path:    ", sc.Path)
 		if sc.Mode != "" {
@@ -920,9 +971,25 @@ func (m restoreTUIModel) renderVersionDetail(v backup.BackupVersion) string {
 		row("Size:    ", "calculating...")
 	}
 
-	// Diff with current target
-	if t, ok := m.targets[m.selectedTarget]; ok {
-		added, removed, common := diffSkillSets(v.SkillNames, listDirNames(t.SkillsConfig().Path))
+	// Diff with current target — resolve agent path for agent backup entries.
+	var diffPath string
+	if isAgentBackupEntry(m.selectedTarget) {
+		baseName := agentBaseTarget(m.selectedTarget)
+		if t, ok := m.targets[baseName]; ok {
+			if ac := t.AgentsConfig(); ac.Path != "" {
+				diffPath = config.ExpandPath(ac.Path)
+			}
+		}
+		if diffPath == "" {
+			if bt, ok := config.DefaultAgentTargets()[baseName]; ok {
+				diffPath = config.ExpandPath(bt.Path)
+			}
+		}
+	} else if t, ok := m.targets[m.selectedTarget]; ok {
+		diffPath = t.SkillsConfig().Path
+	}
+	if diffPath != "" {
+		added, removed, common := diffSkillSets(v.SkillNames, listDirNames(diffPath))
 		if len(added) > 0 || len(removed) > 0 {
 			b.WriteString("\n")
 			b.WriteString(tc.Separator.Render("── Diff vs current target ────────────"))
