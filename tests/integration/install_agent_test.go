@@ -129,6 +129,68 @@ targets: {}
 	result.AssertOutputNotContains(t, "unknown option")
 }
 
+func TestInstall_MixedRepo_ThenSync_AgentsGoToCorrectTargets(t *testing.T) {
+	sb := testutil.NewSandbox(t)
+	defer sb.Cleanup()
+
+	claudeSkills := filepath.Join(sb.Home, ".claude", "skills")
+	claudeAgents := filepath.Join(sb.Home, ".claude", "agents")
+	windsurf := filepath.Join(sb.Home, ".windsurf", "skills")
+
+	sb.WriteConfig(`source: ` + sb.SourcePath + `
+targets:
+  claude:
+    skills:
+      path: "` + claudeSkills + `"
+    agents:
+      path: "` + claudeAgents + `"
+  windsurf:
+    skills:
+      path: "` + windsurf + `"
+`)
+
+	// Create mixed repo with both skills and agents
+	repoDir := filepath.Join(sb.Home, "mixed-repo")
+	os.MkdirAll(filepath.Join(repoDir, "skills", "my-skill"), 0755)
+	os.WriteFile(filepath.Join(repoDir, "skills", "my-skill", "SKILL.md"),
+		[]byte("---\nname: my-skill\n---\n# My Skill"), 0644)
+	os.MkdirAll(filepath.Join(repoDir, "agents"), 0755)
+	os.WriteFile(filepath.Join(repoDir, "agents", "my-agent.md"),
+		[]byte("# My Agent"), 0644)
+	initGitRepo(t, repoDir)
+
+	// Install
+	installResult := sb.RunCLI("install", "file://"+repoDir, "--yes")
+	installResult.AssertSuccess(t)
+
+	// Sync all (skills + agents)
+	syncResult := sb.RunCLI("sync", "all")
+	syncResult.AssertSuccess(t)
+
+	// Skill in claude skills target
+	if !sb.FileExists(filepath.Join(claudeSkills, "my-skill", "SKILL.md")) {
+		t.Error("skill should be synced to claude skills dir")
+	}
+
+	// Agent in claude agents target
+	if !sb.FileExists(filepath.Join(claudeAgents, "my-agent.md")) {
+		t.Error("agent should be synced to claude agents dir")
+	}
+
+	// Skill in windsurf (skills support)
+	if !sb.FileExists(filepath.Join(windsurf, "my-skill", "SKILL.md")) {
+		t.Error("skill should be synced to windsurf skills dir")
+	}
+
+	// Agent NOT in windsurf skills (no agents path)
+	if sb.FileExists(filepath.Join(windsurf, "my-agent.md")) {
+		t.Error("agent should NOT be in windsurf skills dir")
+	}
+
+	// Warning about skipped target
+	syncResult.AssertAnyOutputContains(t, "windsurf")
+}
+
 func TestInstall_MixedRepo_InstallsAgentsToAgentsDir(t *testing.T) {
 	sb := testutil.NewSandbox(t)
 	defer sb.Cleanup()
