@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -492,12 +493,27 @@ func restoreTUIDispatch(noTUI bool) error {
 		if projectConfigExists(cwd) {
 			mode = modeProject
 		}
-		trashBase := resolveTrashBase(mode, cwd, kindSkills)
-		items := trash.List(trashBase)
+		skillTrashBase := resolveTrashBase(mode, cwd, kindSkills)
+		agentTrashBase := resolveTrashBase(mode, cwd, kindAgents)
+
+		// Merge skill + agent trash
+		var items []trash.TrashEntry
+		for _, e := range trash.List(skillTrashBase) {
+			e.Kind = "skill"
+			items = append(items, e)
+		}
+		for _, e := range trash.List(agentTrashBase) {
+			e.Kind = "agent"
+			items = append(items, e)
+		}
 		if len(items) == 0 {
 			ui.Info("Trash is empty")
 			return nil
 		}
+		sort.Slice(items, func(i, j int) bool {
+			return items[i].Date.After(items[j].Date)
+		})
+
 		modeLabel := "global"
 		if mode == modeProject {
 			modeLabel = "project"
@@ -507,7 +523,11 @@ func restoreTUIDispatch(noTUI bool) error {
 		if err != nil {
 			return err
 		}
-		return runTrashTUI(items, trashBase, destDir, cfgPath, modeLabel)
+		agentDestDir, err := resolveSourceDir(mode, cwd, kindAgents)
+		if err != nil {
+			return err
+		}
+		return runTrashTUI(items, skillTrashBase, agentTrashBase, destDir, agentDestDir, cfgPath, modeLabel)
 	}
 
 	return nil

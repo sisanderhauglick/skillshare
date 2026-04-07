@@ -79,6 +79,7 @@ type TrashEntry struct {
 	Path      string    // Full path to trashed directory
 	Date      time.Time // Parsed or stat-based date
 	Size      int64     // Total size in bytes
+	Kind      string    // "skill" or "agent" — set by caller
 }
 
 // MoveToTrash moves a skill directory to the trash.

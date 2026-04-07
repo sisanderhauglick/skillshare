@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -74,6 +75,54 @@ func cmdTrash(args []string) error {
 }
 
 func trashList(mode runMode, cwd string, noTUI bool, kind resourceKindFilter) error {
+	// TUI path: merge skill + agent trash when kind includes both
+	if shouldLaunchTUI(noTUI, nil) {
+		var items []trash.TrashEntry
+
+		if kind.IncludesSkills() {
+			skillBase := resolveTrashBase(mode, cwd, kindSkills)
+			for _, e := range trash.List(skillBase) {
+				e.Kind = "skill"
+				items = append(items, e)
+			}
+		}
+		if kind.IncludesAgents() {
+			agentBase := resolveTrashBase(mode, cwd, kindAgents)
+			for _, e := range trash.List(agentBase) {
+				e.Kind = "agent"
+				items = append(items, e)
+			}
+		}
+
+		if len(items) == 0 {
+			ui.Info("Trash is empty")
+			return nil
+		}
+
+		// Sort merged list by date (newest first)
+		sort.Slice(items, func(i, j int) bool {
+			return items[i].Date.After(items[j].Date)
+		})
+
+		modeLabel := "global"
+		if mode == modeProject {
+			modeLabel = "project"
+		}
+		skillTrashBase := resolveTrashBase(mode, cwd, kindSkills)
+		agentTrashBase := resolveTrashBase(mode, cwd, kindAgents)
+		cfgPath := resolveTrashCfgPath(mode, cwd)
+		destDir, err := resolveSourceDir(mode, cwd, kindSkills)
+		if err != nil {
+			return err
+		}
+		agentDestDir, err := resolveSourceDir(mode, cwd, kindAgents)
+		if err != nil {
+			return err
+		}
+		return runTrashTUI(items, skillTrashBase, agentTrashBase, destDir, agentDestDir, cfgPath, modeLabel)
+	}
+
+	// Plain text path (unchanged) — list single kind
 	trashBase := resolveTrashBase(mode, cwd, kind)
 	items := trash.List(trashBase)
 
@@ -82,21 +131,6 @@ func trashList(mode runMode, cwd string, noTUI bool, kind resourceKindFilter) er
 		return nil
 	}
 
-	// TUI dispatch: TTY + items + TUI enabled
-	if shouldLaunchTUI(noTUI, nil) {
-		modeLabel := "global"
-		if mode == modeProject {
-			modeLabel = "project"
-		}
-		cfgPath := resolveTrashCfgPath(mode, cwd)
-		destDir, err := resolveSourceDir(mode, cwd, kind)
-		if err != nil {
-			return err
-		}
-		return runTrashTUI(items, trashBase, destDir, cfgPath, modeLabel)
-	}
-
-	// Plain text output (--no-tui or non-TTY)
 	ui.Header("Trash")
 	for _, item := range items {
 		age := time.Since(item.Date)

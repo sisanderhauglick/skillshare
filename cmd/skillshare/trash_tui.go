@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -33,9 +34,13 @@ func (i trashItem) Title() string {
 	if i.selected {
 		check = "[x]"
 	}
+	var kindBadge string
+	if i.entry.Kind == "agent" {
+		kindBadge = tc.Cyan.Render("[A]") + " "
+	}
 	age := formatAge(time.Since(i.entry.Date))
 	size := formatBytes(i.entry.Size)
-	return fmt.Sprintf("%s %s  (%s, %s ago)", check, i.entry.Name, size, age)
+	return fmt.Sprintf("%s %s%s  (%s, %s ago)", check, kindBadge, i.entry.Name, size, age)
 }
 
 func (i trashItem) Description() string { return "" }
@@ -51,14 +56,16 @@ type trashOpDoneMsg struct {
 
 // trashTUIModel is the bubbletea model for the interactive trash viewer.
 type trashTUIModel struct {
-	list       list.Model
-	modeLabel  string // "global" or "project"
-	trashBase  string
-	destDir    string
-	cfgPath    string
-	quitting   bool
-	termWidth  int
-	termHeight int
+	list           list.Model
+	modeLabel      string // "global" or "project"
+	skillTrashBase string // for reload after operations
+	agentTrashBase string // for reload after operations
+	destDir        string // skill restore destination
+	agentDestDir   string // agent restore destination
+	cfgPath        string
+	quitting       bool
+	termWidth      int
+	termHeight     int
 
 	// All items (source of truth for filter + selection)
 	allItems []trashItem
@@ -90,7 +97,7 @@ type trashTUIModel struct {
 	detailScroll int
 }
 
-func newTrashTUIModel(items []trash.TrashEntry, trashBase, destDir, cfgPath, modeLabel string) trashTUIModel {
+func newTrashTUIModel(items []trash.TrashEntry, skillTrashBase, agentTrashBase, destDir, agentDestDir, cfgPath, modeLabel string) trashTUIModel {
 	allItems := make([]trashItem, len(items))
 	listItems := make([]list.Item, len(items))
 	for i, entry := range items {
@@ -119,16 +126,18 @@ func newTrashTUIModel(items []trash.TrashEntry, trashBase, destDir, cfgPath, mod
 	fi.Cursor.Style = tc.Filter
 
 	return trashTUIModel{
-		list:        l,
-		modeLabel:   modeLabel,
-		trashBase:   trashBase,
-		destDir:     destDir,
-		cfgPath:     cfgPath,
-		allItems:    allItems,
-		matchCount:  len(allItems),
-		filterInput: fi,
-		selected:    make(map[int]bool),
-		opSpinner:   sp,
+		list:           l,
+		modeLabel:      modeLabel,
+		skillTrashBase: skillTrashBase,
+		agentTrashBase: agentTrashBase,
+		destDir:        destDir,
+		agentDestDir:   agentDestDir,
+		cfgPath:        cfgPath,
+		allItems:       allItems,
+		matchCount:     len(allItems),
+		filterInput:    fi,
+		selected:       make(map[int]bool),
+		opSpinner:      sp,
 	}
 }
 
@@ -492,9 +501,11 @@ func (m trashTUIModel) startOperation() (tea.Model, tea.Cmd) {
 	} else {
 		entries = m.selectedEntries()
 	}
-	trashBase := m.trashBase
 	destDir := m.destDir
+	agentDestDir := m.agentDestDir
 	cfgPath := m.cfgPath
+	skillTrashBase := m.skillTrashBase
+	agentTrashBase := m.agentTrashBase
 
 	cmd := func() tea.Msg {
 		start := time.Now()
@@ -505,8 +516,14 @@ func (m trashTUIModel) startOperation() (tea.Model, tea.Cmd) {
 		case "restore":
 			for _, entry := range entries {
 				e := entry // copy for closure
-				if err := trash.Restore(&e, destDir); err != nil {
-					errMsgs = append(errMsgs, fmt.Sprintf("%s: %s", entry.Name, err))
+				var restoreErr error
+				if e.Kind == "agent" {
+					restoreErr = trash.RestoreAgent(&e, agentDestDir)
+				} else {
+					restoreErr = trash.Restore(&e, destDir)
+				}
+				if restoreErr != nil {
+					errMsgs = append(errMsgs, fmt.Sprintf("%s: %s", entry.Name, restoreErr))
 					continue // don't stop — process remaining items
 				}
 				count++
@@ -530,8 +547,19 @@ func (m trashTUIModel) startOperation() (tea.Model, tea.Cmd) {
 		// Log the operation
 		logTrashOp(cfgPath, action, count, "", start, opErr)
 
-		// Reload items from disk
-		reloaded := trash.List(trashBase)
+		// Reload items from disk — merge skill + agent trash
+		var reloaded []trash.TrashEntry
+		for _, e := range trash.List(skillTrashBase) {
+			e.Kind = "skill"
+			reloaded = append(reloaded, e)
+		}
+		for _, e := range trash.List(agentTrashBase) {
+			e.Kind = "agent"
+			reloaded = append(reloaded, e)
+		}
+		sort.Slice(reloaded, func(i, j int) bool {
+			return reloaded[i].Date.After(reloaded[j].Date)
+		})
 		return trashOpDoneMsg{
 			action:        action,
 			count:         count,
@@ -799,8 +827,8 @@ func (m trashTUIModel) renderTrashDetailPanel(entry trash.TrashEntry, width int)
 // ---------------------------------------------------------------------------
 
 // runTrashTUI starts the bubbletea TUI for the trash viewer.
-func runTrashTUI(items []trash.TrashEntry, trashBase, destDir, cfgPath, modeLabel string) error {
-	model := newTrashTUIModel(items, trashBase, destDir, cfgPath, modeLabel)
+func runTrashTUI(items []trash.TrashEntry, skillTrashBase, agentTrashBase, destDir, agentDestDir, cfgPath, modeLabel string) error {
+	model := newTrashTUIModel(items, skillTrashBase, agentTrashBase, destDir, agentDestDir, cfgPath, modeLabel)
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err := p.Run()
 	return err
