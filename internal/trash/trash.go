@@ -14,6 +14,8 @@ import (
 
 const defaultMaxAge = 7 * 24 * time.Hour // 7 days
 
+const reservedAgentTrashDir = "agents"
+
 // TrashDir returns the global trash directory path.
 func TrashDir() string {
 	return filepath.Join(config.DataDir(), "trash")
@@ -114,9 +116,13 @@ func MoveToTrash(srcPath, name, trashBase string) (string, error) {
 // Walks recursively to find nested entries (e.g., "org/_team-skills_<ts>").
 func List(trashBase string) []TrashEntry {
 	var items []TrashEntry
+	base := filepath.Clean(trashBase)
 
 	filepath.WalkDir(trashBase, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || !d.IsDir() || path == trashBase {
+		if shouldSkipReservedAgentTrashSubtree(base, path, d) {
+			return fs.SkipDir
+		}
+		if err != nil || !d.IsDir() || path == base {
 			return nil
 		}
 
@@ -155,6 +161,19 @@ func List(trashBase string) []TrashEntry {
 	})
 
 	return items
+}
+
+// shouldSkipReservedAgentTrashSubtree prevents the skills trash root from
+// recursively listing agent trash entries under the reserved "trash/agents" path.
+// Agent trash is listed separately from AgentTrashDir()/ProjectAgentTrashDir().
+func shouldSkipReservedAgentTrashSubtree(base, path string, d fs.DirEntry) bool {
+	if d == nil || !d.IsDir() {
+		return false
+	}
+	if filepath.Base(base) != "trash" {
+		return false
+	}
+	return filepath.Clean(path) == filepath.Join(base, reservedAgentTrashDir)
 }
 
 // Cleanup removes trashed items older than maxAge.
@@ -252,7 +271,12 @@ func Restore(entry *TrashEntry, destDir string) error {
 // Unlike Restore (which moves the whole directory), this copies individual files
 // from the trashed directory to destDir (since agents are file-based, not directory-based).
 func RestoreAgent(entry *TrashEntry, destDir string) error {
-	if err := os.MkdirAll(destDir, 0755); err != nil {
+	// Reconstruct subdirectory for nested agents (e.g., "demo/my-agent" → destDir/demo/)
+	targetDir := destDir
+	if subDir := filepath.Dir(entry.Name); subDir != "." {
+		targetDir = filepath.Join(destDir, subDir)
+	}
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		return fmt.Errorf("failed to create agent destination: %w", err)
 	}
 
@@ -267,10 +291,10 @@ func RestoreAgent(entry *TrashEntry, destDir string) error {
 			continue
 		}
 		srcPath := filepath.Join(entry.Path, e.Name())
-		destPath := filepath.Join(destDir, e.Name())
+		destPath := filepath.Join(targetDir, e.Name())
 
 		if _, statErr := os.Stat(destPath); statErr == nil {
-			return fmt.Errorf("'%s' already exists in %s", e.Name(), destDir)
+			return fmt.Errorf("'%s' already exists in %s", e.Name(), targetDir)
 		}
 
 		// Try rename, fallback to copy

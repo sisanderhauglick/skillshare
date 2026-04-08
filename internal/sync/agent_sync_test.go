@@ -21,14 +21,14 @@ func TestCheckAgentCollisions_NoCollision(t *testing.T) {
 
 func TestCheckAgentCollisions_HasCollision(t *testing.T) {
 	agents := []resource.DiscoveredResource{
-		{FlatName: "helper.md", RelPath: "a/helper.md"},
-		{FlatName: "helper.md", RelPath: "b/helper.md"},
+		{FlatName: "team__helper.md", RelPath: "team/helper.md"},
+		{FlatName: "team__helper.md", RelPath: "team__helper.md"},
 	}
 	collisions := CheckAgentCollisions(agents)
 	if len(collisions) != 1 {
 		t.Fatalf("expected 1 collision, got %d", len(collisions))
 	}
-	if collisions[0].FlatName != "helper.md" {
+	if collisions[0].FlatName != "team__helper.md" {
 		t.Errorf("collision FlatName = %q", collisions[0].FlatName)
 	}
 }
@@ -434,6 +434,73 @@ func TestSyncAgents_DefaultIsMerge(t *testing.T) {
 	info, _ := os.Lstat(filepath.Join(targetDir, "a.md"))
 	if info.Mode()&os.ModeSymlink == 0 {
 		t.Error("default mode should create symlinks (merge)")
+	}
+}
+
+func TestSyncAgents_MergeMode_NestedSameBasename_IsStable(t *testing.T) {
+	sourceDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	if err := os.MkdirAll(filepath.Join(sourceDir, "team-a"), 0o755); err != nil {
+		t.Fatalf("mkdir team-a: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(sourceDir, "team-b"), 0o755); err != nil {
+		t.Fatalf("mkdir team-b: %v", err)
+	}
+
+	teamAPath := filepath.Join(sourceDir, "team-a", "helper.md")
+	teamBPath := filepath.Join(sourceDir, "team-b", "helper.md")
+	if err := os.WriteFile(teamAPath, []byte("# Team A"), 0o644); err != nil {
+		t.Fatalf("write team-a helper: %v", err)
+	}
+	if err := os.WriteFile(teamBPath, []byte("# Team B"), 0o644); err != nil {
+		t.Fatalf("write team-b helper: %v", err)
+	}
+
+	agents, err := resource.AgentKind{}.Discover(sourceDir)
+	if err != nil {
+		t.Fatalf("discover agents: %v", err)
+	}
+	if len(agents) != 2 {
+		t.Fatalf("expected 2 agents, got %d", len(agents))
+	}
+
+	first, err := SyncAgents(agents, sourceDir, targetDir, "merge", false, false)
+	if err != nil {
+		t.Fatalf("first sync: %v", err)
+	}
+	if len(first.Linked) != 2 {
+		t.Fatalf("first sync: expected 2 linked, got %d", len(first.Linked))
+	}
+	if len(first.Updated) != 0 {
+		t.Fatalf("first sync: expected 0 updated, got %d", len(first.Updated))
+	}
+
+	second, err := SyncAgents(agents, sourceDir, targetDir, "merge", false, false)
+	if err != nil {
+		t.Fatalf("second sync: %v", err)
+	}
+	if len(second.Linked) != 2 {
+		t.Fatalf("second sync: expected 2 linked, got %d", len(second.Linked))
+	}
+	if len(second.Updated) != 0 {
+		t.Fatalf("second sync: expected 0 updated, got %d", len(second.Updated))
+	}
+
+	linkA, err := os.Readlink(filepath.Join(targetDir, "team-a__helper.md"))
+	if err != nil {
+		t.Fatalf("readlink team-a target: %v", err)
+	}
+	if linkA != teamAPath {
+		t.Fatalf("team-a symlink = %q, want %q", linkA, teamAPath)
+	}
+
+	linkB, err := os.Readlink(filepath.Join(targetDir, "team-b__helper.md"))
+	if err != nil {
+		t.Fatalf("readlink team-b target: %v", err)
+	}
+	if linkB != teamBPath {
+		t.Fatalf("team-b symlink = %q, want %q", linkB, teamBPath)
 	}
 }
 

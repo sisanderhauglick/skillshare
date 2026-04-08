@@ -19,7 +19,11 @@ func createAgentSource(t *testing.T, sb *testutil.Sandbox, agents map[string]str
 		t.Fatalf("failed to create agents dir: %v", err)
 	}
 	for name, content := range agents {
-		if err := os.WriteFile(filepath.Join(agentsDir, name), []byte(content), 0644); err != nil {
+		agentPath := filepath.Join(agentsDir, name)
+		if err := os.MkdirAll(filepath.Dir(agentPath), 0755); err != nil {
+			t.Fatalf("failed to create agent parent dir for %s: %v", name, err)
+		}
+		if err := os.WriteFile(agentPath, []byte(content), 0644); err != nil {
 			t.Fatalf("failed to write agent %s: %v", name, err)
 		}
 	}

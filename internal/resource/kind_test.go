@@ -220,8 +220,8 @@ func TestAgentKind_Discover_Nested(t *testing.T) {
 	if r.RelPath != "curriculum/math-tutor.md" {
 		t.Errorf("RelPath = %q, want %q", r.RelPath, "curriculum/math-tutor.md")
 	}
-	if r.FlatName != "math-tutor.md" {
-		t.Errorf("FlatName = %q, want %q", r.FlatName, "math-tutor.md")
+	if r.FlatName != "curriculum__math-tutor.md" {
+		t.Errorf("FlatName = %q, want %q", r.FlatName, "curriculum__math-tutor.md")
 	}
 	if !r.IsNested {
 		t.Error("expected IsNested=true for nested agent")
@@ -260,8 +260,8 @@ func TestAgentKind_FlatName(t *testing.T) {
 		want    string
 	}{
 		{"tutor.md", "tutor.md"},
-		{"curriculum/math-tutor.md", "math-tutor.md"},
-		{"a/b/deep.md", "deep.md"},
+		{"curriculum/math-tutor.md", "curriculum__math-tutor.md"},
+		{"a/b/deep.md", "a__b__deep.md"},
 	}
 
 	for _, tt := range tests {

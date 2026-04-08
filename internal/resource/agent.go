@@ -113,17 +113,17 @@ func (AgentKind) ResolveName(path string) string {
 	return agentNameFromFile(path, filepath.Base(path))
 }
 
-// FlatName strips directory prefixes, keeping only the filename.
-// Example: "curriculum/math-tutor.md" → "math-tutor.md"
+// FlatName flattens nested agent paths using the shared __ separator.
+// Example: "curriculum/math-tutor.md" → "curriculum__math-tutor.md"
 func (AgentKind) FlatName(relPath string) string {
 	return AgentFlatName(relPath)
 }
 
 // AgentFlatName is the standalone flat name computation for agents.
-// Strips directory prefixes, keeping only the filename.
+// Agents must sync into flat target directories, so nested segments are
+// encoded using the same path flattening rule as skills.
 func AgentFlatName(relPath string) string {
-	relPath = strings.ReplaceAll(relPath, "\\", "/")
-	return filepath.Base(relPath)
+	return utils.PathToFlatName(relPath)
 }
 
 // ActiveAgents returns only non-disabled agents from the given slice.

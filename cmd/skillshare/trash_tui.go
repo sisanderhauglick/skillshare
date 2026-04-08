@@ -37,6 +37,8 @@ func (i trashItem) Title() string {
 	var kindBadge string
 	if i.entry.Kind == "agent" {
 		kindBadge = tc.Cyan.Render("[A]") + " "
+	} else {
+		kindBadge = tc.Cyan.Render("[S]") + " "
 	}
 	age := formatAge(time.Since(i.entry.Date))
 	size := formatBytes(i.entry.Size)
@@ -698,7 +700,8 @@ func (m trashTUIModel) viewConfirm() string {
 	verb := m.confirmAction
 	switch verb {
 	case "restore":
-		b.WriteString(fmt.Sprintf("  Restore %d item(s) to %s?\n\n", len(m.confirmNames), m.destDir))
+		b.WriteString(m.renderRestoreConfirmHeader())
+		b.WriteString("\n")
 	case "delete":
 		b.WriteString("  ")
 		b.WriteString(tc.Red.Render(fmt.Sprintf("Permanently delete %d item(s)?", len(m.confirmNames))))
@@ -726,6 +729,32 @@ func (m trashTUIModel) viewConfirm() string {
 	b.WriteString("\n")
 
 	return b.String()
+}
+
+func (m trashTUIModel) renderRestoreConfirmHeader() string {
+	var hasSkills, hasAgents bool
+	for _, entry := range m.selectedEntries() {
+		switch entry.Kind {
+		case "agent":
+			hasAgents = true
+		default:
+			hasSkills = true
+		}
+	}
+
+	switch {
+	case hasSkills && hasAgents:
+		return fmt.Sprintf(
+			"  Restore %d item(s)?\n\n    skills -> %s\n    agents -> %s\n",
+			len(m.confirmNames),
+			m.destDir,
+			m.agentDestDir,
+		)
+	case hasAgents:
+		return fmt.Sprintf("  Restore %d item(s) to %s?\n", len(m.confirmNames), m.agentDestDir)
+	default:
+		return fmt.Sprintf("  Restore %d item(s) to %s?\n", len(m.confirmNames), m.destDir)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -788,6 +817,11 @@ func (m trashTUIModel) renderTrashDetailPanel(entry trash.TrashEntry, width int)
 		b.WriteString("\n")
 	}
 
+	if entry.Kind == "agent" {
+		row("Type", tc.Cyan.Render("Agent"))
+	} else {
+		row("Type", tc.Cyan.Render("Skill"))
+	}
 	row("Trashed", entry.Date.Format("2006-01-02 15:04:05"))
 	row("Age", formatAge(time.Since(entry.Date))+" ago")
 	row("Size", formatBytes(entry.Size))
@@ -800,21 +834,38 @@ func (m trashTUIModel) renderTrashDetailPanel(entry trash.TrashEntry, width int)
 	}
 	row("Path", pathStr)
 
-	// SKILL.md preview — read first 15 lines
-	skillMD := filepath.Join(entry.Path, "SKILL.md")
-	if data, err := os.ReadFile(skillMD); err == nil {
-		lines := strings.SplitN(string(data), "\n", 16)
-		if len(lines) > 15 {
-			lines = lines[:15]
+	// Content preview — SKILL.md for skills, agent .md file for agents
+	var previewFile, previewTitle string
+	if entry.Kind == "agent" {
+		// Find the .md file inside the trash directory
+		if entries, readErr := os.ReadDir(entry.Path); readErr == nil {
+			for _, e := range entries {
+				if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") {
+					previewFile = filepath.Join(entry.Path, e.Name())
+					previewTitle = e.Name()
+					break
+				}
+			}
 		}
-		preview := strings.TrimRight(strings.Join(lines, "\n"), "\n")
-		if preview != "" {
-			b.WriteString("\n")
-			b.WriteString(tc.Title.Render("SKILL.md"))
-			b.WriteString("\n")
-			for _, line := range strings.Split(preview, "\n") {
-				b.WriteString(tc.Dim.Render(line))
+	} else {
+		previewFile = filepath.Join(entry.Path, "SKILL.md")
+		previewTitle = "SKILL.md"
+	}
+	if previewFile != "" {
+		if data, err := os.ReadFile(previewFile); err == nil {
+			lines := strings.SplitN(string(data), "\n", 16)
+			if len(lines) > 15 {
+				lines = lines[:15]
+			}
+			preview := strings.TrimRight(strings.Join(lines, "\n"), "\n")
+			if preview != "" {
 				b.WriteString("\n")
+				b.WriteString(tc.Title.Render(previewTitle))
+				b.WriteString("\n")
+				for _, line := range strings.Split(preview, "\n") {
+					b.WriteString(tc.Dim.Render(line))
+					b.WriteString("\n")
+				}
 			}
 		}
 	}

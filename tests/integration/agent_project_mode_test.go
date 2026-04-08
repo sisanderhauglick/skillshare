@@ -191,6 +191,79 @@ func TestAuditProject_Agents(t *testing.T) {
 	result.AssertOutputNotContains(t, "not yet supported")
 }
 
+func TestSyncProject_All_NestedAgentsSameBasename_FlattensAndStaysStable(t *testing.T) {
+	sb := testutil.NewSandbox(t)
+	defer sb.Cleanup()
+
+	projectDir := filepath.Join(sb.Root, "nested-agents-project")
+	skillsDir := filepath.Join(projectDir, ".skillshare", "skills")
+	agentsDir := filepath.Join(projectDir, ".skillshare", "agents")
+	claudeAgents := filepath.Join(projectDir, ".claude", "agents")
+	cursorAgents := filepath.Join(projectDir, ".cursor", "agents")
+	claudeSkills := filepath.Join(projectDir, ".claude", "skills")
+	cursorSkills := filepath.Join(projectDir, ".cursor", "skills")
+
+	for _, dir := range []string{
+		filepath.Join(skillsDir, "sample-skill"),
+		filepath.Join(agentsDir, "team-a"),
+		filepath.Join(agentsDir, "team-b"),
+		claudeAgents,
+		cursorAgents,
+		claudeSkills,
+		cursorSkills,
+	} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+
+	if err := os.WriteFile(filepath.Join(skillsDir, "sample-skill", "SKILL.md"), []byte("---\nname: sample-skill\n---\n# Sample"), 0o644); err != nil {
+		t.Fatalf("write sample skill: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(agentsDir, "team-a", "helper.md"), []byte("# Team A"), 0o644); err != nil {
+		t.Fatalf("write team-a helper: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(agentsDir, "team-b", "helper.md"), []byte("# Team B"), 0o644); err != nil {
+		t.Fatalf("write team-b helper: %v", err)
+	}
+
+	configContent := `targets:
+  - name: claude
+    skills:
+      path: ` + claudeSkills + `
+    agents:
+      path: ` + claudeAgents + `
+  - name: cursor
+    skills:
+      path: ` + cursorSkills + `
+    agents:
+      path: ` + cursorAgents + `
+`
+	if err := os.WriteFile(filepath.Join(projectDir, ".skillshare", "config.yaml"), []byte(configContent), 0o644); err != nil {
+		t.Fatalf("write project config: %v", err)
+	}
+
+	sb.WriteConfig(`source: ` + sb.SourcePath + "\ntargets: {}\n")
+
+	first := sb.RunCLIInDir(projectDir, "sync", "-p", "all")
+	first.AssertSuccess(t)
+	first.AssertAnyOutputContains(t, "Agent sync complete")
+	first.AssertAnyOutputContains(t, "0 updated")
+
+	second := sb.RunCLIInDir(projectDir, "sync", "-p", "all")
+	second.AssertSuccess(t)
+	second.AssertAnyOutputContains(t, "Agent sync complete")
+	second.AssertAnyOutputContains(t, "0 updated")
+
+	for _, base := range []string{claudeAgents, cursorAgents} {
+		for _, name := range []string{"team-a__helper.md", "team-b__helper.md"} {
+			if _, err := os.Lstat(filepath.Join(base, name)); err != nil {
+				t.Fatalf("expected synced agent %s in %s: %v", name, base, err)
+			}
+		}
+	}
+}
+
 // --- default -p (skills only, unchanged) ---
 
 func TestStatusProject_Default_SkillsOnly(t *testing.T) {

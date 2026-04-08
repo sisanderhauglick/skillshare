@@ -346,12 +346,21 @@ export const api = {
 
   // Trash
   listTrash: () => apiFetch<TrashListResponse>('/trash'),
-  restoreTrash: (name: string) =>
-    apiFetch<{ success: boolean }>(`/trash/${encodeURIComponent(name)}/restore`, { method: 'POST' }),
-  deleteTrash: (name: string) =>
-    apiFetch<{ success: boolean }>(`/trash/${encodeURIComponent(name)}`, { method: 'DELETE' }),
-  emptyTrash: () =>
-    apiFetch<{ success: boolean; removed: number }>('/trash/empty', { method: 'POST' }),
+  restoreTrash: (name: string, kind?: 'skill' | 'agent') =>
+    apiFetch<{ success: boolean }>(
+      `/trash/${encodeURIComponent(name)}/restore${kind ? `?kind=${encodeURIComponent(kind)}` : ''}`,
+      { method: 'POST' },
+    ),
+  deleteTrash: (name: string, kind?: 'skill' | 'agent') =>
+    apiFetch<{ success: boolean }>(
+      `/trash/${encodeURIComponent(name)}${kind ? `?kind=${encodeURIComponent(kind)}` : ''}`,
+      { method: 'DELETE' },
+    ),
+  emptyTrash: (kind: 'skill' | 'agent' | 'all' = 'all') =>
+    apiFetch<{ success: boolean; removed: number }>(
+      `/trash/empty${kind ? `?kind=${encodeURIComponent(kind)}` : ''}`,
+      { method: 'POST' },
+    ),
 
   // Extras
   listExtras: () => apiFetch<{ extras: Extra[] }>('/extras'),

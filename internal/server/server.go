@@ -142,6 +142,15 @@ func (s *Server) IsProjectMode() bool {
 	return s.projectRoot != ""
 }
 
+// skillsSource returns the skills source directory for the current mode.
+// Caller must hold s.mu (RLock or Lock) when accessing s.cfg.
+func (s *Server) skillsSource() string {
+	if s.IsProjectMode() {
+		return filepath.Join(s.projectRoot, ".skillshare", "skills")
+	}
+	return s.cfg.Source
+}
+
 // agentsSource returns the agents source directory for the current mode.
 // Caller must hold s.mu (RLock or Lock) when accessing s.cfg.
 func (s *Server) agentsSource() string {

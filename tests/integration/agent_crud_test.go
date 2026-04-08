@@ -244,6 +244,31 @@ func TestTrash_Agents_Restore(t *testing.T) {
 	}
 }
 
+func TestTrash_Agents_Restore_Nested_DoesNotGoToSkills(t *testing.T) {
+	sb := testutil.NewSandbox(t)
+	defer sb.Cleanup()
+
+	agentsDir := createAgentSource(t, sb, map[string]string{
+		"demo/code-archaeologist.md": "# Code Archaeologist",
+	})
+	sb.WriteConfig(`source: ` + sb.SourcePath + "\ntargets: {}\n")
+
+	sb.RunCLI("uninstall", "-g", "agents", "demo/code-archaeologist", "--force")
+
+	result := sb.RunCLI("trash", "agents", "restore", "demo/code-archaeologist")
+	result.AssertSuccess(t)
+	result.AssertAnyOutputContains(t, "Restored")
+
+	if _, err := os.Stat(filepath.Join(agentsDir, "demo", "code-archaeologist.md")); err != nil {
+		t.Fatalf("nested agent should be restored to agents source: %v", err)
+	}
+
+	wrongSkillsPath := filepath.Join(sb.SourcePath, "agents", "demo", "code-archaeologist", "code-archaeologist.md")
+	if _, err := os.Stat(wrongSkillsPath); err == nil {
+		t.Fatalf("nested agent should not be restored into skills tree: %s", wrongSkillsPath)
+	}
+}
+
 // --- default behavior unchanged ---
 
 func TestTrash_Default_SkillsOnly(t *testing.T) {
@@ -256,4 +281,24 @@ func TestTrash_Default_SkillsOnly(t *testing.T) {
 	result := sb.RunCLI("trash", "list", "--no-tui")
 	result.AssertSuccess(t)
 	result.AssertAnyOutputContains(t, "empty")
+}
+
+func TestTrash_Default_SkillsOnly_IgnoresAgentTrash(t *testing.T) {
+	sb := testutil.NewSandbox(t)
+	defer sb.Cleanup()
+
+	createAgentSource(t, sb, map[string]string{
+		"demo/tutor.md": "# Tutor agent",
+	})
+	sb.WriteConfig(`source: ` + sb.SourcePath + "\ntargets: {}\n")
+
+	sb.RunCLI("uninstall", "-g", "agents", "demo/tutor", "--force")
+
+	result := sb.RunCLI("trash", "list", "--no-tui")
+	result.AssertSuccess(t)
+	result.AssertAnyOutputContains(t, "empty")
+
+	restore := sb.RunCLI("trash", "restore", "demo/tutor")
+	restore.AssertFailure(t)
+	restore.AssertAnyOutputContains(t, "not found in trash")
 }

@@ -47,9 +47,9 @@ export default function TrashPage() {
     staleTime: staleTimes.trash,
   });
 
-  const [restoreName, setRestoreName] = useState<string | null>(null);
+  const [restoreItem, setRestoreItem] = useState<TrashedSkill | null>(null);
   const [restoring, setRestoring] = useState(false);
-  const [deleteName, setDeleteName] = useState<string | null>(null);
+  const [deleteItem, setDeleteItem] = useState<TrashedSkill | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [emptyOpen, setEmptyOpen] = useState(false);
   const [emptying, setEmptying] = useState(false);
@@ -62,41 +62,41 @@ export default function TrashPage() {
   };
 
   const handleRestore = async () => {
-    if (!restoreName) return;
+    if (!restoreItem) return;
     setRestoring(true);
     try {
-      await api.restoreTrash(restoreName);
-      toast(`Restored "${restoreName}" from trash`, 'success');
+      await api.restoreTrash(restoreItem.name, restoreItem.kind ?? 'skill');
+      toast(`Restored "${restoreItem.name}" from trash`, 'success');
       queryClient.invalidateQueries({ queryKey: queryKeys.trash });
       queryClient.invalidateQueries({ queryKey: queryKeys.skills.all });
     } catch (e: any) {
       toast(e.message, 'error');
     } finally {
       setRestoring(false);
-      setRestoreName(null);
+      setRestoreItem(null);
     }
   };
 
   const handleDelete = async () => {
-    if (!deleteName) return;
+    if (!deleteItem) return;
     setDeleting(true);
     try {
-      await api.deleteTrash(deleteName);
-      toast(`Permanently deleted "${deleteName}"`, 'success');
+      await api.deleteTrash(deleteItem.name, deleteItem.kind ?? 'skill');
+      toast(`Permanently deleted "${deleteItem.name}"`, 'success');
       queryClient.invalidateQueries({ queryKey: queryKeys.trash });
       queryClient.invalidateQueries({ queryKey: queryKeys.skills.all });
     } catch (e: any) {
       toast(e.message, 'error');
     } finally {
       setDeleting(false);
-      setDeleteName(null);
+      setDeleteItem(null);
     }
   };
 
   const handleEmpty = async () => {
     setEmptying(true);
     try {
-      const res = await api.emptyTrash();
+      const res = await api.emptyTrash('all');
       toast(`Emptied trash (${res.removed} item${res.removed !== 1 ? 's' : ''} removed)`, 'success');
       queryClient.invalidateQueries({ queryKey: queryKeys.trash });
       queryClient.invalidateQueries({ queryKey: queryKeys.skills.all });
@@ -124,8 +124,8 @@ export default function TrashPage() {
         icon={<Trash2 size={24} strokeWidth={2.5} />}
         title="Trash"
         subtitle={isProjectMode
-          ? 'Recently deleted project skills are kept for 7 days before automatic cleanup'
-          : 'Recently deleted skills are kept for 7 days before automatic cleanup'}
+          ? 'Recently deleted project skills and agents are kept for 7 days before automatic cleanup'
+          : 'Recently deleted skills and agents are kept for 7 days before automatic cleanup'}
         actions={
           <>
             <Button onClick={handleRefresh} variant="secondary" size="sm">
@@ -153,7 +153,7 @@ export default function TrashPage() {
         <EmptyState
           icon={Trash2}
           title="Trash is empty"
-          description="Deleted skills will appear here for 7 days"
+          description="Deleted skills and agents will appear here for 7 days"
         />
       ) : (
         <div className="space-y-4">
@@ -161,8 +161,8 @@ export default function TrashPage() {
             <TrashCard
               key={`${item.name}-${item.timestamp}`}
               item={item}
-              onRestore={() => setRestoreName(item.name)}
-              onDelete={() => setDeleteName(item.name)}
+              onRestore={() => setRestoreItem(item)}
+              onDelete={() => setDeleteItem(item)}
             />
           ))}
         </div>
@@ -170,12 +170,12 @@ export default function TrashPage() {
 
       {/* Restore Dialog */}
       <ConfirmDialog
-        open={restoreName !== null}
-        title="Restore Skill"
+        open={restoreItem !== null}
+        title={restoreItem?.kind === 'agent' ? 'Restore Agent' : 'Restore Skill'}
         message={
-          restoreName ? (
+          restoreItem ? (
             <span>
-              Restore <strong>{restoreName}</strong> back to your skills directory?
+              Restore <strong>{restoreItem.name}</strong> back to your {restoreItem.kind === 'agent' ? 'agents' : 'skills'} directory?
             </span>
           ) : <span />
         }
@@ -183,17 +183,17 @@ export default function TrashPage() {
         variant="default"
         loading={restoring}
         onConfirm={handleRestore}
-        onCancel={() => setRestoreName(null)}
+        onCancel={() => setRestoreItem(null)}
       />
 
       {/* Delete Dialog */}
       <ConfirmDialog
-        open={deleteName !== null}
+        open={deleteItem !== null}
         title="Permanently Delete"
         message={
-          deleteName ? (
+          deleteItem ? (
             <span>
-              Permanently delete <strong>{deleteName}</strong>? This cannot be undone.
+              Permanently delete <strong>{deleteItem.name}</strong>? This cannot be undone.
             </span>
           ) : <span />
         }
@@ -201,7 +201,7 @@ export default function TrashPage() {
         variant="danger"
         loading={deleting}
         onConfirm={handleDelete}
-        onCancel={() => setDeleteName(null)}
+        onCancel={() => setDeleteItem(null)}
       />
 
       {/* Empty Trash Dialog */}
