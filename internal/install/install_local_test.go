@@ -46,8 +46,9 @@ func TestInstall_LocalPath_Basic(t *testing.T) {
 		t.Error("expected SKILL.md to exist in destination")
 	}
 
-	// Verify metadata was written
-	if !HasMeta(destDir) {
+	// Verify metadata was written to centralized store
+	store, _ := LoadMetadata(filepath.Dir(destDir))
+	if !store.Has(filepath.Base(destDir)) {
 		t.Error("expected metadata to be written")
 	}
 }
@@ -162,17 +163,15 @@ func TestInstall_LocalPath_WritesFileHashes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	meta, err := ReadMeta(destDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if meta == nil {
+	store, _ := LoadMetadata(filepath.Dir(destDir))
+	entry := store.Get(filepath.Base(destDir))
+	if entry == nil {
 		t.Fatal("expected meta to exist")
 	}
-	if len(meta.FileHashes) < 2 {
-		t.Errorf("expected at least 2 file hashes (SKILL.md + helpers.sh), got %d", len(meta.FileHashes))
+	if len(entry.FileHashes) < 2 {
+		t.Errorf("expected at least 2 file hashes (SKILL.md + helpers.sh), got %d", len(entry.FileHashes))
 	}
-	for _, hash := range meta.FileHashes {
+	for _, hash := range entry.FileHashes {
 		if len(hash) < 7 || hash[:7] != "sha256:" {
 			t.Errorf("expected sha256: prefixed hash, got %q", hash)
 		}

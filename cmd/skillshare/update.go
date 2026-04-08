@@ -260,6 +260,8 @@ func cmdUpdate(args []string) error {
 			return fmt.Errorf("failed to scan skills: %w", err)
 		}
 	} else {
+		// Load store once for name resolution
+		nameStore, _ := install.LoadMetadata(cfg.Source)
 		// Resolve by specific names/groups
 		for _, name := range opts.names {
 			// Glob pattern matching (e.g. "core-*", "_team-?")
@@ -283,7 +285,7 @@ func cmdUpdate(args []string) error {
 				continue
 			}
 
-			if isGroupDir(name, cfg.Source) {
+			if isGroupDir(name, cfg.Source, nameStore) {
 				groupMatches, groupErr := resolveGroupUpdatable(name, cfg.Source)
 				if groupErr != nil {
 					resolveWarnings = append(resolveWarnings, fmt.Sprintf("%s: %v", name, groupErr))

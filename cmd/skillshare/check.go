@@ -654,13 +654,14 @@ func runCheckFiltered(sourceDir string, opts *checkOptions) error {
 		resolveSpinner = ui.StartSpinner("Resolving skills...")
 	}
 
+	checkStore, _ := install.LoadMetadata(sourceDir)
 	var targets []updateTarget
 	seen := map[string]bool{}
 	var resolveWarnings []string
 
 	for _, name := range opts.names {
 		// Check group directory first (same logic as update)
-		if isGroupDir(name, sourceDir) {
+		if isGroupDir(name, sourceDir, checkStore) {
 			groupMatches, groupErr := resolveGroupUpdatable(name, sourceDir)
 			if groupErr != nil {
 				resolveWarnings = append(resolveWarnings, fmt.Sprintf("%s: %v", name, groupErr))

@@ -1074,27 +1074,7 @@ func cmdUninstall(args []string) error {
 		for _, t := range succeeded {
 			removedNames[t.name] = true
 		}
-		for _, name := range skillsStore.List() {
-			// Direct match by bare name or full path (group/name)
-			entry := skillsStore.Get(name)
-			fullName := name
-			if entry != nil && entry.Group != "" {
-				fullName = entry.Group + "/" + name
-			}
-			if removedNames[name] || removedNames[fullName] {
-				skillsStore.Remove(name)
-				continue
-			}
-			// When a group directory is uninstalled, also remove its member skills by group field
-			if entry != nil && entry.Group != "" {
-				for rn := range removedNames {
-					if entry.Group == rn || strings.HasPrefix(entry.Group, rn+"/") {
-						skillsStore.Remove(name)
-						break
-					}
-				}
-			}
-		}
+		skillsStore.RemoveByNames(removedNames)
 		if saveErr := skillsStore.Save(cfg.Source); saveErr != nil {
 			ui.Warning("Failed to update metadata after uninstall: %v", saveErr)
 		}

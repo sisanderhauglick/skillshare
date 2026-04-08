@@ -13,6 +13,12 @@ import (
 // MetadataFileName is the centralized metadata file stored in each directory.
 const MetadataFileName = ".metadata.json"
 
+// Metadata kind constants for LoadMetadataWithMigration.
+const (
+	MetadataKindSkill = ""      // default kind for skills directories
+	MetadataKindAgent = "agent" // kind for agents directories
+)
+
 // MetadataStore holds all entries for a single directory (skills/ or agents/).
 type MetadataStore struct {
 	Version int                       `json:"version"`
@@ -113,6 +119,72 @@ func (e *MetadataEntry) FullName() string {
 		return e.Group + "/" + e.Name
 	}
 	return e.Name
+}
+
+// RemoveByNames removes entries matching the given names, including group members.
+// Handles direct key matches, full-path matches (group/name), and group membership.
+func (s *MetadataStore) RemoveByNames(names map[string]bool) {
+	for _, name := range s.List() {
+		entry := s.Get(name)
+		fullName := name
+		if entry != nil && entry.Group != "" {
+			fullName = entry.Group + "/" + name
+		}
+		if names[name] || names[fullName] {
+			s.Remove(name)
+			continue
+		}
+		// Group directory uninstall: remove member skills
+		if entry != nil && entry.Group != "" {
+			for rn := range names {
+				if entry.Group == rn || strings.HasPrefix(entry.Group, rn+"/") {
+					s.Remove(name)
+					break
+				}
+			}
+		}
+	}
+}
+
+// WriteMetaToStore writes a SkillMeta to the centralized .metadata.json store.
+// sourceDir is the skills root (if empty, defaults to parent of destPath).
+// destPath is the installed skill path.
+func WriteMetaToStore(sourceDir, destPath string, meta *SkillMeta) error {
+	if sourceDir == "" {
+		sourceDir = filepath.Dir(destPath)
+	}
+	rel, err := filepath.Rel(sourceDir, destPath)
+	if err != nil {
+		return fmt.Errorf("relative path: %w", err)
+	}
+	rel = filepath.ToSlash(rel)
+
+	name := rel
+	group := ""
+	if idx := strings.LastIndex(rel, "/"); idx >= 0 {
+		group = rel[:idx]
+		name = rel[idx+1:]
+	}
+
+	store, loadErr := LoadMetadata(sourceDir)
+	if loadErr != nil {
+		store = NewMetadataStore()
+	}
+
+	store.Set(name, &MetadataEntry{
+		Source:      meta.Source,
+		Kind:        meta.Kind,
+		Type:        meta.Type,
+		Group:       group,
+		InstalledAt: meta.InstalledAt,
+		RepoURL:     meta.RepoURL,
+		Subdir:      meta.Subdir,
+		Version:     meta.Version,
+		TreeHash:    meta.TreeHash,
+		FileHashes:  meta.FileHashes,
+		Branch:      meta.Branch,
+	})
+	return store.Save(sourceDir)
 }
 
 // LoadMetadata reads .metadata.json from the given directory.

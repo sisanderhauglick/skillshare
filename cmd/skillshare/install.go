@@ -402,6 +402,7 @@ func cmdInstall(args []string) error {
 		return err
 	}
 
+	parsed.opts.SourceDir = cfg.Source
 	source, resolvedFromMeta, err := resolveInstallSource(parsed.sourceArg, parsed.opts, cfg)
 	if err == nil && parsed.opts.Branch != "" {
 		source.Branch = parsed.opts.Branch

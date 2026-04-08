@@ -28,6 +28,7 @@ type InstallOptions struct {
 	AuditProjectRoot string   // Project root for project-mode audit rule resolution
 	Quiet            bool     // Suppress per-skill output in InstallFromConfig
 	Branch           string   // Git branch to clone from (empty = remote default)
+	SourceDir        string   // Skills root dir for centralized metadata (set by caller)
 }
 
 // IsAgentMode returns true if explicitly installing agents.

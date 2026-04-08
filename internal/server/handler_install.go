@@ -151,6 +151,7 @@ func (s *Server) handleInstallBatch(w http.ResponseWriter, r *http.Request) {
 		SkipAudit:      body.SkipAudit,
 		AuditThreshold: s.auditThreshold(),
 		Branch:         body.Branch,
+		SourceDir:      s.cfg.Source,
 	}
 	if s.IsProjectMode() {
 		installOpts.AuditProjectRoot = s.projectRoot
@@ -327,6 +328,7 @@ func (s *Server) handleInstall(w http.ResponseWriter, r *http.Request) {
 			Into:           body.Into,
 			Branch:         body.Branch,
 			AuditThreshold: s.auditThreshold(),
+			SourceDir:      s.cfg.Source,
 		}
 		if s.IsProjectMode() {
 			installOpts.AuditProjectRoot = s.projectRoot

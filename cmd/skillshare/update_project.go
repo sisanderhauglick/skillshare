@@ -65,7 +65,7 @@ func cmdUpdateProjectBatch(sourcePath string, opts *updateOptions, projectRoot s
 		// Check group directory first (before repo/skill lookup,
 		// so "feature-radar" expands to all skills rather than
 		// matching a single nested "feature-radar/feature-radar").
-		if isGroupDir(name, sourcePath) {
+		if isGroupDir(name, sourcePath, metaStore) {
 			groupMatches, groupErr := resolveGroupUpdatable(name, sourcePath)
 			if groupErr != nil {
 				resolveWarnings = append(resolveWarnings, fmt.Sprintf("%s: %v", name, groupErr))

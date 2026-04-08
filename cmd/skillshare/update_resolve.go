@@ -99,6 +99,9 @@ func resolveGroupUpdatable(group, sourceDir string) ([]updateTarget, error) {
 		return nil, fmt.Errorf("group '%s' resolves outside source directory", group)
 	}
 
+	// Load store once before walk (not per iteration)
+	store, _ := install.LoadMetadata(resolvedSourceDir)
+
 	var matches []updateTarget
 	if walkErr := filepath.Walk(walkRoot, func(path string, fi os.FileInfo, err error) error {
 		if err != nil {
@@ -123,7 +126,6 @@ func resolveGroupUpdatable(group, sourceDir string) ([]updateTarget, error) {
 		}
 
 		// Skill with metadata (centralized store)
-		store, _ := install.LoadMetadata(resolvedSourceDir)
 		if entry := store.GetByPath(rel); entry != nil && entry.Source != "" {
 			matches = append(matches, updateTarget{name: rel, path: path, isRepo: false, meta: entry})
 			return filepath.SkipDir
@@ -140,7 +142,7 @@ func resolveGroupUpdatable(group, sourceDir string) ([]updateTarget, error) {
 // isGroupDir checks if a name corresponds to a group directory (a container
 // for other skills). Returns false for tracked repos, skills with metadata,
 // and directories that are themselves a skill (have SKILL.md).
-func isGroupDir(name, sourceDir string) bool {
+func isGroupDir(name, sourceDir string, store *install.MetadataStore) bool {
 	path := filepath.Join(sourceDir, name)
 	info, err := os.Stat(path)
 	if err != nil || !info.IsDir() {
@@ -151,7 +153,6 @@ func isGroupDir(name, sourceDir string) bool {
 		return false
 	}
 	// Not a skill with metadata
-	store, _ := install.LoadMetadata(sourceDir)
 	if entry := store.Get(name); entry != nil && entry.Source != "" {
 		return false
 	}

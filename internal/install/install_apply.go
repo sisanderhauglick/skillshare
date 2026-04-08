@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"skillshare/internal/utils"
 )
@@ -26,6 +27,20 @@ func buildDiscoverySkillSource(source *Source, skillPath string) string {
 }
 
 func installImpl(source *Source, destPath string, opts InstallOptions) (*InstallResult, error) {
+	// Derive SourceDir from destPath if not set by caller.
+	// destPath = sourceDir[/into]/skillName, so strip Into + skillName.
+	if opts.SourceDir == "" {
+		dir := filepath.Dir(destPath)
+		if opts.Into != "" {
+			// Strip the --into prefix from the parent
+			dir = filepath.Dir(dir)
+			for i := strings.Count(opts.Into, "/"); i > 0; i-- {
+				dir = filepath.Dir(dir)
+			}
+		}
+		opts.SourceDir = dir
+	}
+
 	result := &InstallResult{
 		SkillName: source.Name,
 		Source:    source.Raw,
@@ -102,7 +117,7 @@ func installFromLocal(source *Source, destPath string, result *InstallResult, op
 	if hashes, hashErr := ComputeFileHashes(destPath); hashErr == nil {
 		meta.FileHashes = hashes
 	}
-	if err := WriteMeta(destPath, meta); err != nil {
+	if err := WriteMetaToStore(opts.SourceDir, destPath, meta); err != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("failed to write metadata: %v", err))
 	}
 
@@ -144,7 +159,7 @@ func installFromGit(source *Source, destPath string, result *InstallResult, opts
 	if hashes, hashErr := ComputeFileHashes(destPath); hashErr == nil {
 		meta.FileHashes = hashes
 	}
-	if err := WriteMeta(destPath, meta); err != nil {
+	if err := WriteMetaToStore(opts.SourceDir, destPath, meta); err != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("failed to write metadata: %v", err))
 	}
 
@@ -257,7 +272,7 @@ func installFromDiscoveryImpl(discovery *DiscoveryResult, skill SkillInfo, destP
 	if hashes, hashErr := ComputeFileHashes(destPath); hashErr == nil {
 		meta.FileHashes = hashes
 	}
-	if err := WriteMeta(destPath, meta); err != nil {
+	if err := WriteMetaToStore(opts.SourceDir, destPath, meta); err != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("failed to write metadata: %v", err))
 	}
 
@@ -366,7 +381,7 @@ func installFromGitSubdir(source *Source, destPath string, result *InstallResult
 	if hashes, hashErr := ComputeFileHashes(destPath); hashErr == nil {
 		meta.FileHashes = hashes
 	}
-	if err := WriteMeta(destPath, meta); err != nil {
+	if err := WriteMetaToStore(opts.SourceDir, destPath, meta); err != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("failed to write metadata: %v", err))
 	}
 
