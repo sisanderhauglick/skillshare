@@ -11,8 +11,8 @@ Configuration file reference for skillshare.
 ```text
 ~/.config/skillshare/
 ├── config.yaml          ← Configuration file
-├── registry.yaml        ← Skill registry (auto-managed)
 ├── skills/              ← Source directory (your skills)
+│   ├── .metadata.json   ← Skill metadata (auto-managed)
 │   ├── my-skill/
 │   ├── another/
 │   └── _team-repo/      ← Tracked repository
@@ -375,8 +375,8 @@ When you run `skillshare install` with no arguments, all listed skills that aren
 
 The `skills:` list is automatically updated after each `install` and `uninstall` operation. You don't need to edit it manually.
 
-:::note Migrated to registry.yaml
-Starting from v0.16.2, installed skill entries are stored in a separate `registry.yaml` file instead of inside `config.yaml`. Existing `skills:` entries in `config.yaml` are migrated automatically on first run. The schema and fields remain the same.
+:::note Migrated to .metadata.json
+Starting from v0.16.2, installed skill entries moved from `config.yaml` to a separate file. In the current version, all installation metadata is stored in a centralized `.metadata.json` inside the `skills/` directory. Migration from older formats (`registry.yaml`, per-skill `.skillshare-meta.json`) is automatic on first run.
 :::
 
 ### `extras` {#extras}
@@ -665,21 +665,29 @@ SKILLSHARE_CONFIG=~/custom-config.yaml skillshare status
 
 ## Skill Metadata
 
-When you install a skill, skillshare creates a `.skillshare-meta.json` file:
+When you install a skill, skillshare records its metadata in the centralized `.metadata.json` file:
 
 ```json
 {
-  "source": "anthropics/skills/skills/pdf",
-  "type": "github",
-  "installed_at": "2026-01-20T15:30:00Z",
-  "repo_url": "https://github.com/anthropics/skills.git",
-  "subdir": "skills/pdf",
-  "version": "abc1234"
+  "skills": [
+    {
+      "name": "pdf",
+      "source": "anthropics/skills/skills/pdf",
+      "type": "github",
+      "installed_at": "2026-01-20T15:30:00Z",
+      "repo_url": "https://github.com/anthropics/skills.git",
+      "subdir": "skills/pdf",
+      "version": "abc1234"
+    }
+  ]
 }
 ```
 
+Each skill entry includes:
+
 | Field | Description |
 |-------|-------------|
+| `name` | Skill directory name |
 | `source` | Original install source input |
 | `type` | Source type (`github`, `local`, etc.) |
 | `installed_at` | Installation timestamp |

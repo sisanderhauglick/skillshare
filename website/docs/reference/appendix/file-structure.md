@@ -12,11 +12,10 @@ Directory layout and file locations for skillshare.
 ~/.config/skillshare/        # XDG_CONFIG_HOME
 ├── config.yaml              # Configuration file
 ├── audit-rules.yaml         # Custom audit rules (optional)
-├── skills/                  # Source directory (skills + registry)
-│   ├── registry.yaml        # Installed skill registry (auto-managed)
+├── skills/                  # Source directory (skills + metadata)
+│   ├── .metadata.json       # Installed skill metadata (auto-managed)
 │   ├── my-skill/            # Regular skill
 │   │   ├── SKILL.md         # Skill definition (required)
-│   │   └── .skillshare-meta.json # Install metadata (auto-generated)
 │   ├── code-review/         # Another skill
 │   │   └── SKILL.md
 │   └── _team-skills/        # Tracked repository
@@ -99,29 +98,32 @@ See [Configuration](/docs/reference/targets/configuration) for full reference.
 
 ---
 
-## Registry File
+## Metadata File
 
 ### Location
 
 ```
-~/.config/skillshare/skills/registry.yaml
+~/.config/skillshare/skills/.metadata.json
 ```
 
 Stores metadata about installed and tracked skills. Lives inside the source directory so it can be synced via git for multi-machine setups. **Auto-managed** by `install`, `uninstall`, and `update` — don't edit manually.
 
-:::note Migration
-In v0.19+, `registry.yaml` moved from the config directory to the source directory. The migration is automatic on first run — no manual action needed.
-:::
-
 ### Contents
 
-```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/runkids/skillshare/main/schemas/registry.schema.json
-skills:
-  - name: pdf
-    source: anthropics/skills/skills/pdf
-  - name: _team-skills
-    source: github.com/team/skills
+```json
+{
+  "skills": [
+    {
+      "name": "pdf",
+      "source": "anthropics/skills/skills/pdf"
+    },
+    {
+      "name": "_team-skills",
+      "source": "github.com/team/skills",
+      "tracked": true
+    }
+  ]
+}
 ```
 
 Each entry records the skill name and its install source. Tracked repos (prefixed with `_`) include the full repository URL for `update` and `check` operations.
@@ -145,9 +147,9 @@ Each entry records the skill name and its install source. Tracked repos (prefixe
 
 ```
 skills/
+├── .metadata.json                # Centralized skill metadata (auto-managed)
 ├── skill-name/                   # Skill directory
 │   ├── SKILL.md                  # Required: skill definition
-│   ├── .skillshare-meta.json     # Optional: install metadata
 │   ├── examples/                 # Optional: example files
 │   └── templates/                # Optional: code templates
 ├── frontend/                     # Category folder (via --into or manual)
@@ -224,22 +226,6 @@ This file should **not** be committed to version control — add it to `.gitigno
 
 When active, `sync -v`, `status`, and `doctor` display a `.local active` indicator.
 
-### .skillshare-meta.json (Auto-generated)
-
-Metadata about where the skill was installed from:
-
-```json
-{
-  "source": "github.com/org/repo/path/to/skill",
-  "type": "github",
-  "installed_at": "2026-01-20T15:30:00Z",
-  "repo_url": "https://github.com/org/repo.git",
-  "subdir": "path/to/skill",
-  "version": "abc1234"
-}
-```
-
-**Don't edit this file manually.** It's used by `skillshare update` and `skillshare check`.
 
 ---
 
@@ -393,7 +379,7 @@ See [Environment Variables](./environment-variables.md#xdg_config_home) for deta
 | Item | Path |
 |------|------|
 | Config | `~/.config/skillshare/config.yaml` |
-| Registry | `~/.config/skillshare/skills/registry.yaml` |
+| Metadata | `~/.config/skillshare/skills/.metadata.json` |
 | Source | `~/.config/skillshare/skills/` |
 | Backups | `~/.local/share/skillshare/backups/` |
 | Trash | `~/.local/share/skillshare/trash/` |
@@ -407,7 +393,7 @@ See [Environment Variables](./environment-variables.md#xdg_config_home) for deta
 | Item | Path |
 |------|------|
 | Config | `%AppData%\skillshare\config.yaml` |
-| Registry | `%AppData%\skillshare\skills\registry.yaml` |
+| Metadata | `%AppData%\skillshare\skills\.metadata.json` |
 | Source | `%AppData%\skillshare\skills\` |
 | Backups | `%AppData%\skillshare\backups\` |
 | Trash | `%AppData%\skillshare\trash\` |
@@ -422,7 +408,7 @@ skillshare follows the [XDG Base Directory Specification](https://specifications
 
 | XDG Variable | Default Path | skillshare Uses For |
 |-------------|-------------|---------------------|
-| `XDG_CONFIG_HOME` | `~/.config` | `skillshare/config.yaml`, `skillshare/skills/` (includes `registry.yaml`) |
+| `XDG_CONFIG_HOME` | `~/.config` | `skillshare/config.yaml`, `skillshare/skills/` (includes `.metadata.json`) |
 | `XDG_DATA_HOME` | `~/.local/share` | `skillshare/backups/`, `skillshare/trash/` |
 | `XDG_STATE_HOME` | `~/.local/state` | `skillshare/logs/` |
 | `XDG_CACHE_HOME` | `~/.cache` | `skillshare/ui/` (downloaded web dashboard) |

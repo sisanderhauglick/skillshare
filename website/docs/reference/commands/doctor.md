@@ -84,11 +84,11 @@ For each target:
 
 ### Skill Integrity
 
-For tracked skills with `.skillshare-meta.json` file hashes, doctor verifies that no files have been tampered with since installation:
+For installed skills with file hash metadata, doctor verifies that no files have been tampered with since installation:
 
 - Compares current SHA-256 hashes against stored hashes
 - Reports modified, missing, and added files per skill
-- Local skills (no `.skillshare-meta.json`) are silently skipped — this is expected
+- Local skills (not in `.metadata.json`) are silently skipped — this is expected
 - Installed skills with metadata but missing `file_hashes` are flagged with their names
 
 ```text

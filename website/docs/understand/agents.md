@@ -230,4 +230,4 @@ skillshare sync -p
 ```
 
 Project agent source: `.skillshare/agents/`
-Installed agents (tracked) get `.skillshare-meta.json` sidecar files and `.gitignore` entries, same as tracked skills.
+Installed agents (tracked) are recorded in `.metadata.json` and `.gitignore` entries are created, same as tracked skills.

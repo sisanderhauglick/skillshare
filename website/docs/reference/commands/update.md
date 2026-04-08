@@ -326,8 +326,8 @@ skillshare update --all -p --skip-audit  # Skip security audit gate
 | Type | Method | Detected by |
 |------|--------|-------------|
 | **Tracked repo** (`_repo`) | `git pull` | Has `.git/` directory |
-| **Remote skill** (with metadata) | Reinstall from source | Has `.skillshare-meta.json` |
-| **Local skill** | Skipped | No metadata |
+| **Remote skill** (with metadata) | Reinstall from source | Listed in `.metadata.json` |
+| **Local skill** | Skipped | Not listed in `.metadata.json` |
 
 The `_` prefix is optional — `skillshare update team-skills -p` auto-detects `_team-skills`.
 
