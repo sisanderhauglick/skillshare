@@ -439,6 +439,25 @@ func backupTargetsBeforeSync(cfg *config.Config) {
 			ui.Success("%s -> %s", name, backupPath)
 		}
 	}
+
+	// Also backup agent targets if any exist.
+	backupDir, agentTargets, err := resolveGlobalAgentBackupContextFromCfg(cfg)
+	if err != nil || len(agentTargets) == 0 {
+		return
+	}
+	for _, at := range agentTargets {
+		entryName := at.name + "-agents"
+		bp, bErr := backup.CreateInDir(backupDir, entryName, at.agentPath)
+		if bErr != nil {
+			ui.Warning("Failed to backup %s: %v", entryName, bErr)
+		} else if bp != "" {
+			if !backedUp {
+				ui.Header("Backing up")
+				backedUp = true
+			}
+			ui.Success("%s -> %s", entryName, bp)
+		}
+	}
 }
 
 func syncTarget(name string, target config.TargetConfig, cfg *config.Config, dryRun, force bool) error {

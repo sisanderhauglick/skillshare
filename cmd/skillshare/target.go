@@ -257,6 +257,28 @@ func backupTargets(cfg *config.Config, toRemove []string) {
 			ui.Success("%s -> %s", targetName, backupPath)
 		}
 	}
+
+	// Also backup agent directories for targets being removed.
+	backupDir, agentTargets, err := resolveGlobalAgentBackupContextFromCfg(cfg)
+	if err != nil || len(agentTargets) == 0 {
+		return
+	}
+	removeSet := make(map[string]struct{}, len(toRemove))
+	for _, name := range toRemove {
+		removeSet[name] = struct{}{}
+	}
+	for _, at := range agentTargets {
+		if _, ok := removeSet[at.name]; !ok {
+			continue
+		}
+		entryName := at.name + "-agents"
+		bp, bErr := backup.CreateInDir(backupDir, entryName, at.agentPath)
+		if bErr != nil {
+			ui.Warning("Failed to backup %s: %v", entryName, bErr)
+		} else if bp != "" {
+			ui.Success("%s -> %s", entryName, bp)
+		}
+	}
 }
 
 // unlinkTarget unlinks a single target

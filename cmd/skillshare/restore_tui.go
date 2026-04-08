@@ -34,6 +34,14 @@ func agentBaseTarget(name string) string {
 	return strings.TrimSuffix(name, "-agents")
 }
 
+// resolveAgentBackupPath resolves the agent target path for a backup entry name,
+// reusing the canonical resolveAgentTargetPath with builtin fallback.
+func resolveAgentBackupPath(targets map[string]config.TargetConfig, entryName string) string {
+	baseName := agentBaseTarget(entryName)
+	tc := targets[baseName] // zero-value is safe — AgentsConfig returns empty, falls through to builtin
+	return resolveAgentTargetPath(tc, config.DefaultAgentTargets(), baseName)
+}
+
 // restorePhase tracks which screen is active.
 type restorePhase int
 
@@ -477,21 +485,9 @@ func (m restoreTUIModel) startRestore() (tea.Model, tea.Cmd) {
 	cmd := func() tea.Msg {
 		start := time.Now()
 
-		// Resolve destination path — agent backups restore to the agent directory.
 		var destPath string
 		if isAgentBackupEntry(targetName) {
-			baseName := agentBaseTarget(targetName)
-			if tc, ok := targets[baseName]; ok {
-				if ac := tc.AgentsConfig(); ac.Path != "" {
-					destPath = config.ExpandPath(ac.Path)
-				}
-			}
-			if destPath == "" {
-				builtinAgents := config.DefaultAgentTargets()
-				if bt, ok := builtinAgents[baseName]; ok {
-					destPath = config.ExpandPath(bt.Path)
-				}
-			}
+			destPath = resolveAgentBackupPath(targets, targetName)
 		} else {
 			if tc, ok := targets[targetName]; ok {
 				destPath = tc.SkillsConfig().Path
@@ -879,20 +875,8 @@ func (m restoreTUIModel) renderTargetDetail(s backup.TargetBackupSummary) string
 
 	row("Target:  ", s.TargetName)
 
-	// Target path and current state — agent entries resolve via AgentsConfig or builtin defaults.
 	if isAgentBackupEntry(s.TargetName) {
-		baseName := agentBaseTarget(s.TargetName)
-		var agentPath string
-		if t, ok := m.targets[baseName]; ok {
-			if ac := t.AgentsConfig(); ac.Path != "" {
-				agentPath = config.ExpandPath(ac.Path)
-			}
-		}
-		if agentPath == "" {
-			if bt, ok := config.DefaultAgentTargets()[baseName]; ok {
-				agentPath = config.ExpandPath(bt.Path)
-			}
-		}
+		agentPath := resolveAgentBackupPath(m.targets, s.TargetName)
 		if agentPath != "" {
 			row("Path:    ", agentPath)
 			row("Status:  ", describeTargetState(agentPath))
@@ -971,20 +955,9 @@ func (m restoreTUIModel) renderVersionDetail(v backup.BackupVersion) string {
 		row("Size:    ", "calculating...")
 	}
 
-	// Diff with current target — resolve agent path for agent backup entries.
 	var diffPath string
 	if isAgentBackupEntry(m.selectedTarget) {
-		baseName := agentBaseTarget(m.selectedTarget)
-		if t, ok := m.targets[baseName]; ok {
-			if ac := t.AgentsConfig(); ac.Path != "" {
-				diffPath = config.ExpandPath(ac.Path)
-			}
-		}
-		if diffPath == "" {
-			if bt, ok := config.DefaultAgentTargets()[baseName]; ok {
-				diffPath = config.ExpandPath(bt.Path)
-			}
-		}
+		diffPath = resolveAgentBackupPath(m.targets, m.selectedTarget)
 	} else if t, ok := m.targets[m.selectedTarget]; ok {
 		diffPath = t.SkillsConfig().Path
 	}

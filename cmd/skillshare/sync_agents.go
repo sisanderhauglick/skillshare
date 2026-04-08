@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"skillshare/internal/backup"
 	"skillshare/internal/config"
 	"skillshare/internal/resource"
 	"skillshare/internal/sync"
@@ -53,6 +54,25 @@ func syncAgentsGlobal(cfg *config.Config, dryRun, force, jsonOutput bool, start 
 		ui.Header("Syncing agents")
 		if dryRun {
 			ui.Warning("Dry run mode - no changes will be made")
+		}
+	}
+
+	// Backup agent targets before sync (non-dry-run only).
+	if !dryRun && !jsonOutput {
+		backupDir, agentTargets, _ := resolveGlobalAgentBackupContextFromCfg(cfg)
+		backedUp := false
+		for _, at := range agentTargets {
+			entryName := at.name + "-agents"
+			bp, bErr := backup.CreateInDir(backupDir, entryName, at.agentPath)
+			if bErr != nil {
+				ui.Warning("Failed to backup %s: %v", entryName, bErr)
+			} else if bp != "" {
+				if !backedUp {
+					ui.Header("Backing up")
+					backedUp = true
+				}
+				ui.Success("%s -> %s", entryName, bp)
+			}
 		}
 	}
 

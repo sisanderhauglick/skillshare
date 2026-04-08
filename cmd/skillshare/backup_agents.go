@@ -120,7 +120,12 @@ func resolveGlobalAgentBackupContext() (string, []agentTarget, error) {
 	if err != nil {
 		return "", nil, err
 	}
+	return resolveGlobalAgentBackupContextFromCfg(cfg)
+}
 
+// resolveGlobalAgentBackupContextFromCfg is like resolveGlobalAgentBackupContext
+// but accepts an already-loaded config to avoid redundant config.Load() calls.
+func resolveGlobalAgentBackupContextFromCfg(cfg *config.Config) (string, []agentTarget, error) {
 	builtinAgents := config.DefaultAgentTargets()
 	var targets []agentTarget
 	for name := range cfg.Targets {
