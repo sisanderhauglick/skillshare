@@ -89,6 +89,7 @@ type listTUIModel struct {
 
 	// Tab filter — pre-filters allItems by kind (All / Skills / Agents)
 	activeTab   listTab     // currently selected tab
+	activeTabP  *listTab    // shared pointer for delegate to read current tab
 	tabCounts   [3]int      // cached counts: [all, skills, agents]
 	tabFiltered []skillItem // cached result of tabFilteredItems(); set by applyFilter()
 
@@ -124,7 +125,21 @@ type listTUIModel struct {
 // When loadFn is non-nil, skills are loaded asynchronously inside the TUI (spinner shown).
 // When loadFn is nil, skills/totalCount are used directly (pre-loaded).
 func newListTUIModel(loadFn listLoadFn, skills []skillItem, totalCount int, modeLabel, sourcePath, agentsSourcePath string, targets map[string]config.TargetConfig, initialKind resourceKindFilter) listTUIModel {
-	delegate := listSkillDelegate{}
+	// Map CLI kind filter to initial tab
+	var initTab listTab
+	switch initialKind {
+	case kindAgents:
+		initTab = listTabAgents
+	case kindSkills:
+		initTab = listTabSkills
+	default:
+		initTab = listTabAll
+	}
+
+	// Shared pointer lets the delegate read the current tab without re-creation.
+	tabPtr := new(listTab)
+	*tabPtr = initTab
+	delegate := listSkillDelegate{activeTab: tabPtr}
 
 	// Build initial item set (empty if async loading)
 	var items []list.Item
@@ -156,17 +171,6 @@ func newListTUIModel(loadFn listLoadFn, skills []skillItem, totalCount int, mode
 	fi.Cursor.Style = tc.Filter
 	fi.Placeholder = "filter or t:tracked g:group r:repo k:kind"
 
-	// Map CLI kind filter to initial tab
-	var initTab listTab
-	switch initialKind {
-	case kindAgents:
-		initTab = listTabAgents
-	case kindSkills:
-		initTab = listTabSkills
-	default:
-		initTab = listTabAll
-	}
-
 	m := listTUIModel{
 		list:             l,
 		totalCount:       totalCount,
@@ -175,6 +179,7 @@ func newListTUIModel(loadFn listLoadFn, skills []skillItem, totalCount int, mode
 		agentsSourcePath: agentsSourcePath,
 		targets:          targets,
 		activeTab:        initTab,
+		activeTabP:       tabPtr,
 		detailCache:      make(map[string]*detailData),
 		loading:          loadFn != nil,
 		loadSpinner:      sp,
@@ -206,9 +211,20 @@ func (m *listTUIModel) recomputeTabCounts() {
 }
 
 // tabFilteredItems returns the subset of allItems matching the active tab.
+// For listTabAll, items are reordered so skills come first then agents,
+// keeping each kind's original order intact.
 func (m *listTUIModel) tabFilteredItems() []skillItem {
 	if m.activeTab == listTabAll {
-		return m.allItems
+		skills := make([]skillItem, 0, m.tabCounts[1])
+		agents := make([]skillItem, 0, m.tabCounts[2])
+		for _, item := range m.allItems {
+			if item.entry.Kind == "agent" {
+				agents = append(agents, item)
+			} else {
+				skills = append(skills, item)
+			}
+		}
+		return append(skills, agents...)
 	}
 	wantAgent := m.activeTab == listTabAgents
 	cap := m.tabCounts[1]
@@ -399,12 +415,14 @@ func (m listTUIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "tab":
 			m.activeTab = (m.activeTab + 1) % 3
+			*m.activeTabP = m.activeTab
 			m.applyFilter()
 			m.updateTitle()
 			skipGroupItem(&m.list, 1)
 			return m, nil
 		case "shift+tab":
 			m.activeTab = (m.activeTab - 1 + 3) % 3
+			*m.activeTabP = m.activeTab
 			m.applyFilter()
 			m.updateTitle()
 			skipGroupItem(&m.list, 1)
@@ -546,7 +564,7 @@ func (m listTUIModel) View() string {
 
 	// Loading state — spinner + message
 	if m.loading {
-		return fmt.Sprintf("\n  %s Loading skills...\n", m.loadSpinner.View())
+		return fmt.Sprintf("\n  %s Loading %s...\n", m.loadSpinner.View(), m.activeTab.noun())
 	}
 
 	// Content viewer — dual-pane
@@ -1005,6 +1023,14 @@ func renderDetailParagraph(lines []string) []string {
 
 func detailStatusBits(e skillEntry) string {
 	var bits []string
+
+	// Kind label (Agent / Skill)
+	if e.Kind == "agent" {
+		bits = append(bits, tc.Cyan.Render("Agent"))
+	} else {
+		bits = append(bits, tc.Cyan.Render("Skill"))
+	}
+
 	switch {
 	case e.RepoName != "":
 		bits = append(bits, tc.Green.Render("tracked"))

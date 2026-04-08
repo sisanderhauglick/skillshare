@@ -27,7 +27,10 @@ func (g groupItem) Title() string       { return g.label }
 func (g groupItem) Description() string { return "" }
 
 // listSkillDelegate renders a compact single-line browser row for the list TUI.
-type listSkillDelegate struct{}
+// activeTab is a shared pointer so the delegate sees tab changes without re-creation.
+type listSkillDelegate struct {
+	activeTab *listTab // nil-safe: treat nil as listTabAll
+}
 
 func (listSkillDelegate) Height() int  { return 1 }
 func (listSkillDelegate) Spacing() int { return 0 }
@@ -35,7 +38,7 @@ func (listSkillDelegate) Update(_ tea.Msg, _ *list.Model) tea.Cmd {
 	return nil
 }
 
-func (listSkillDelegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
+func (d listSkillDelegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
 	width := m.Width()
 	if width <= 0 {
 		width = 40
@@ -46,7 +49,8 @@ func (listSkillDelegate) Render(w io.Writer, m list.Model, index int, item list.
 		renderGroupRow(w, v, width)
 	case skillItem:
 		selected := index == m.Index()
-		renderSkillRow(w, v, width, selected)
+		allTab := d.activeTab != nil && *d.activeTab == listTabAll
+		renderSkillRow(w, v, width, selected, allTab)
 	}
 }
 
@@ -66,8 +70,8 @@ func renderGroupRow(w io.Writer, g groupItem, width int) {
 	fmt.Fprint(w, tc.Dim.Render("─ ")+label+" "+tc.Dim.Render(line))
 }
 
-func renderSkillRow(w io.Writer, skill skillItem, width int, selected bool) {
-	renderPrefixRow(w, skillTitleLine(skill.entry), width, selected)
+func renderSkillRow(w io.Writer, skill skillItem, width int, selected bool, allTab bool) {
+	renderPrefixRow(w, skillTitleLine(skill.entry, allTab), width, selected)
 }
 
 // renderPrefixRow renders a single-line list row with a "▌" prefix bar.
@@ -201,14 +205,18 @@ func (i skillItem) Description() string {
 	return ""
 }
 
-func skillTitleLine(e skillEntry) string {
+func skillTitleLine(e skillEntry, allTab bool) string {
 	if e.Disabled {
 		// Disabled: dim the entire name + ⊘ prefix
 		return tc.Dim.Render("⊘ " + compactSkillPath(e))
 	}
 	var prefix string
-	if e.Kind == "agent" {
-		prefix = tc.Cyan.Render("[A]") + " "
+	if allTab {
+		if e.Kind == "agent" {
+			prefix = tc.Cyan.Render("[A]") + " "
+		} else {
+			prefix = tc.Cyan.Render("[S]") + " "
+		}
 	}
 	title := prefix + colorSkillPath(compactSkillPath(e))
 	if badge := skillTypeBadge(e); badge != "" {
@@ -325,13 +333,16 @@ func toSkillItems(entries []skillEntry) []skillItem {
 // buildGroupedItems inserts groupItem separators before each repo/local group.
 // Skills must be sorted by RelPath (tracked repos with "_" prefix sort first).
 // If all skills belong to a single group (e.g. all standalone), no separators are added.
+// When items contain mixed kinds (skills + agents), groups are keyed by kind+repo
+// so skills and agents stay in separate blocks.
 func buildGroupedItems(skills []skillItem) []list.Item {
 	// Check if there are multiple groups.
 	groups := map[string]bool{}
+	hasMultiKinds := false
 	for _, s := range skills {
-		groups[s.entry.RepoName] = true
-		if len(groups) > 1 {
-			break
+		groups[s.entry.Kind+"\x00"+s.entry.RepoName] = true
+		if !hasMultiKinds && len(skills) > 0 && s.entry.Kind != skills[0].entry.Kind {
+			hasMultiKinds = true
 		}
 	}
 
@@ -361,12 +372,20 @@ func buildGroupedItems(skills []skillItem) []list.Item {
 	}
 
 	for _, s := range skills {
-		key := s.entry.RepoName // "" for local
+		key := s.entry.Kind + "\x00" + s.entry.RepoName
 		if key != currentGroup {
 			flush()
 			label := "standalone"
-			if key != "" {
-				label = strings.TrimPrefix(key, "_")
+			if s.entry.RepoName != "" {
+				label = strings.TrimPrefix(s.entry.RepoName, "_")
+			}
+			// Prefix with kind when mixed to visually separate skills/agents
+			if hasMultiKinds {
+				kindPrefix := "Skills"
+				if s.entry.Kind == "agent" {
+					kindPrefix = "Agents"
+				}
+				label = kindPrefix + " · " + label
 			}
 			items = append(items, groupItem{label: label})
 			currentGroup = key
