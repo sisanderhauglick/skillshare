@@ -38,9 +38,10 @@ targets: {}
 	if err != nil {
 		t.Fatalf("failed to load metadata: %v", err)
 	}
-	entry := store.Get("pdf-skill")
+	// Full-path key: "frontend/pdf-skill" (not just basename "pdf-skill")
+	entry := store.Get("frontend/pdf-skill")
 	if entry == nil {
-		t.Fatal("expected metadata entry for pdf-skill")
+		t.Fatal("expected metadata entry for 'frontend/pdf-skill'")
 	}
 	if entry.Group != "frontend" {
 		t.Errorf("metadata group = %q, want %q", entry.Group, "frontend")
@@ -68,9 +69,10 @@ targets: {}
 	if err != nil {
 		t.Fatalf("failed to load metadata: %v", err)
 	}
-	entry := store.Get("ui-skill")
+	// Full-path key: "frontend/vue/ui-skill"
+	entry := store.Get("frontend/vue/ui-skill")
 	if entry == nil {
-		t.Fatal("expected metadata entry for ui-skill")
+		t.Fatal("expected metadata entry for 'frontend/vue/ui-skill'")
 	}
 	if entry.Group != "frontend/vue" {
 		t.Errorf("metadata group = %q, want %q", entry.Group, "frontend/vue")
@@ -104,9 +106,10 @@ targets: {}
 	if err != nil {
 		t.Fatalf("failed to load metadata: %v", err)
 	}
-	entry := store.Get("source-pdf")
+	// Full-path key: "frontend/source-pdf"
+	entry := store.Get("frontend/source-pdf")
 	if entry == nil {
-		t.Fatal("expected metadata entry for source-pdf after --into install")
+		t.Fatal("expected metadata entry for 'frontend/source-pdf' after --into install")
 	}
 	if entry.Group != "frontend" {
 		t.Errorf("metadata group = %q, want %q", entry.Group, "frontend")
@@ -159,9 +162,10 @@ func TestInstallProject_Into_RecordsGroupField(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to load metadata: %v", err)
 	}
-	entry := store.Get("my-skill")
+	// Full-path key: "tools/my-skill"
+	entry := store.Get("tools/my-skill")
 	if entry == nil {
-		t.Fatal("expected metadata entry for my-skill")
+		t.Fatal("expected metadata entry for 'tools/my-skill'")
 	}
 	if entry.Group != "tools" {
 		t.Errorf("metadata group = %q, want %q", entry.Group, "tools")
