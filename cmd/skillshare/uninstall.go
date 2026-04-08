@@ -494,9 +494,9 @@ func performUninstallQuiet(target *uninstallTarget) (typeLabel string, err error
 
 // performUninstall moves the skill to trash (verbose single-target output).
 // Note: .gitignore cleanup is handled in batch by the caller.
-func performUninstall(target *uninstallTarget) error {
+func performUninstall(target *uninstallTarget, store *install.MetadataStore) error {
 	// Read metadata before moving (for reinstall hint)
-	meta, _ := install.ReadMeta(target.path)
+	entry := store.Get(target.name)
 	groupSkillCount := 0
 	if !target.isTrackedRepo {
 		groupSkillCount = len(countGroupSkills(target.path))
@@ -515,8 +515,8 @@ func performUninstall(target *uninstallTarget) error {
 		ui.Success("Uninstalled skill: %s", target.name)
 	}
 	ui.Info("Moved to trash (7 days): %s", trashPath)
-	if meta != nil && meta.Source != "" {
-		ui.Info("Reinstall: skillshare install %s", meta.Source)
+	if entry != nil && entry.Source != "" {
+		ui.Info("Reinstall: skillshare install %s", entry.Source)
 	}
 	ui.SectionLabel("Next Steps")
 	ui.Info("Run 'skillshare sync' to update all targets")
@@ -882,8 +882,8 @@ func cmdUninstall(args []string) error {
 			if t.isTrackedRepo {
 				ui.Warning("[dry-run] would remove %s from .gitignore", t.name)
 			}
-			if meta, err := install.ReadMeta(t.path); err == nil && meta != nil && meta.Source != "" {
-				ui.Info("[dry-run] Reinstall: skillshare install %s", meta.Source)
+			if entry := skillsStore.Get(t.name); entry != nil && entry.Source != "" {
+				ui.Info("[dry-run] Reinstall: skillshare install %s", entry.Source)
 			}
 		}
 		return nil
@@ -1044,7 +1044,7 @@ func cmdUninstall(args []string) error {
 		}
 	} else {
 		for _, t := range targets {
-			if err := performUninstall(t); err != nil {
+			if err := performUninstall(t, skillsStore); err != nil {
 				failed = append(failed, fmt.Sprintf("%s: %v", t.name, err))
 			} else {
 				succeeded = append(succeeded, t)
@@ -1068,42 +1068,27 @@ func cmdUninstall(args []string) error {
 	}
 
 	// --- Phase 7: FINALIZE ---
-	// Batch-remove succeeded skills from registry
+	// Batch-remove succeeded skills from metadata store
 	if len(succeeded) > 0 {
-		regDir := cfg.RegistryDir
-		reg, regErr := config.LoadRegistry(regDir)
-		if regErr != nil {
-			ui.Warning("Failed to load registry: %v", regErr)
-		} else if len(reg.Skills) > 0 {
-			removedNames := map[string]bool{}
-			for _, t := range succeeded {
-				removedNames[t.name] = true
+		removedNames := map[string]bool{}
+		for _, t := range succeeded {
+			removedNames[t.name] = true
+		}
+		for _, name := range skillsStore.List() {
+			if removedNames[name] {
+				skillsStore.Remove(name)
+				continue
 			}
-			updated := make([]config.SkillEntry, 0, len(reg.Skills))
-			for _, s := range reg.Skills {
-				fullName := s.FullName()
-				if removedNames[fullName] {
-					continue
-				}
-				// When a group directory is uninstalled, also remove its member skills
-				memberOfRemoved := false
-				for name := range removedNames {
-					if strings.HasPrefix(fullName, name+"/") {
-						memberOfRemoved = true
-						break
-					}
-				}
-				if memberOfRemoved {
-					continue
-				}
-				updated = append(updated, s)
-			}
-			if len(updated) != len(reg.Skills) {
-				reg.Skills = updated
-				if saveErr := reg.Save(regDir); saveErr != nil {
-					ui.Warning("Failed to update registry after uninstall: %v", saveErr)
+			// When a group directory is uninstalled, also remove its member skills
+			for rn := range removedNames {
+				if strings.HasPrefix(name, rn+"/") {
+					skillsStore.Remove(name)
+					break
 				}
 			}
+		}
+		if saveErr := skillsStore.Save(cfg.Source); saveErr != nil {
+			ui.Warning("Failed to update metadata after uninstall: %v", saveErr)
 		}
 	}
 

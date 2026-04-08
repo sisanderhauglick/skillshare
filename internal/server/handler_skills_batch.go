@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"skillshare/internal/install"
 	ssync "skillshare/internal/sync"
 	"skillshare/internal/utils"
 )
@@ -73,8 +72,12 @@ func (s *Server) handleBatchSetTargets(w http.ResponseWriter, r *http.Request) {
 	var updated, skipped int
 	var errors []string
 
-	// Collect paths that need meta hash refresh (outside the lock).
-	var updatedPaths []string
+	// Collect skills that need meta hash refresh (outside the lock).
+	type updatedSkill struct {
+		name string
+		path string
+	}
+	var updatedSkills []updatedSkill
 
 	// Acquire write lock only for the file-write loop.
 	s.mu.Lock()
@@ -101,14 +104,20 @@ func (s *Server) handleBatchSetTargets(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		updatedPaths = append(updatedPaths, d.SourcePath)
+		updatedSkills = append(updatedSkills, updatedSkill{
+			name: filepath.Base(d.SourcePath),
+			path: d.SourcePath,
+		})
 		updated++
 	}
 	s.mu.Unlock()
 
 	// Recompute file hashes outside the lock so reads aren't blocked.
-	for _, p := range updatedPaths {
-		install.RefreshMetaHashes(p)
+	for _, sk := range updatedSkills {
+		s.skillsStore.RefreshHashes(sk.name, sk.path)
+	}
+	if len(updatedSkills) > 0 {
+		s.skillsStore.Save(s.cfg.Source) //nolint:errcheck
 	}
 
 	s.writeOpsLog("batch-set-targets", "ok", start, map[string]any{
@@ -182,7 +191,9 @@ func (s *Server) handleSetSkillTargets(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		install.RefreshMetaHashes(d.SourcePath)
+		skillName := filepath.Base(d.SourcePath)
+		s.skillsStore.RefreshHashes(skillName, d.SourcePath)
+		s.skillsStore.Save(s.cfg.Source) //nolint:errcheck
 
 		s.writeOpsLog("set-skill-targets", "ok", start, map[string]any{
 			"name":   name,

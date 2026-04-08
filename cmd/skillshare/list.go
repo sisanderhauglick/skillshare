@@ -200,11 +200,22 @@ func sortSkillEntries(skills []skillEntry, sortBy string) {
 }
 
 // buildSkillEntries builds skill entries from discovered skills.
-// ReadMeta calls are parallelized with a bounded worker pool.
+// Metadata is read from the centralized .metadata.json store.
 func buildSkillEntries(discovered []sync.DiscoveredSkill) []skillEntry {
 	skills := make([]skillEntry, len(discovered))
 
-	// Pre-fill non-I/O fields
+	// Load centralized metadata store once (derive source dir from first skill).
+	var store *install.MetadataStore
+	if len(discovered) > 0 {
+		sourceDir := strings.TrimSuffix(discovered[0].SourcePath, discovered[0].RelPath)
+		sourceDir = strings.TrimRight(sourceDir, `/\`)
+		store, _ = install.LoadMetadata(sourceDir)
+	}
+	if store == nil {
+		store = install.NewMetadataStore()
+	}
+
+	// Pre-fill non-I/O fields + metadata from store
 	for i, d := range discovered {
 		skills[i] = skillEntry{
 			Name:     d.FlatName,
@@ -219,28 +230,18 @@ func buildSkillEntries(discovered []sync.DiscoveredSkill) []skillEntry {
 				skills[i].RepoName = parts[0]
 			}
 		}
-	}
 
-	// Parallel ReadMeta with bounded concurrency
-	const metaWorkers = 64
-	sem := make(chan struct{}, metaWorkers)
-	var wg gosync.WaitGroup
-
-	for i, d := range discovered {
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(idx int, sourcePath string) {
-			defer wg.Done()
-			defer func() { <-sem }()
-			if meta, err := install.ReadMeta(sourcePath); err == nil && meta != nil {
-				skills[idx].Source = meta.Source
-				skills[idx].Type = meta.Type
-				skills[idx].InstalledAt = meta.InstalledAt.Format("2006-01-02")
-				skills[idx].Branch = meta.Branch
+		// Enrich from centralized metadata store
+		skillName := filepath.Base(d.SourcePath)
+		if entry := store.Get(skillName); entry != nil {
+			skills[i].Source = entry.Source
+			skills[i].Type = entry.Type
+			if !entry.InstalledAt.IsZero() {
+				skills[i].InstalledAt = entry.InstalledAt.Format("2006-01-02")
 			}
-		}(i, d.SourcePath)
+			skills[i].Branch = entry.Branch
+		}
 	}
-	wg.Wait()
 
 	// Fallback: for tracked-repo skills with no branch in metadata, read from git.
 	// Cache per-repo to avoid repeated subprocess calls for skills in the same repo.

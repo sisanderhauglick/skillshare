@@ -51,7 +51,7 @@ type checkOptions struct {
 type skillWithMeta struct {
 	name string
 	path string
-	meta *install.SkillMeta
+	meta *install.MetadataEntry
 }
 
 // collectCheckItems reads metadata and partitions items for parallel checking.
@@ -69,31 +69,37 @@ func collectCheckItems(sourceDir string, repos []string, skills []string) (
 		})
 	}
 
+	// Load centralized metadata store once for all skills.
+	store, _ := install.LoadMetadata(sourceDir)
+	if store == nil {
+		store = install.NewMetadataStore()
+	}
+
 	urlGroups := make(map[string][]skillWithMeta)
 	var localResults []checkSkillResult
 
 	for _, skill := range skills {
 		skillPath := filepath.Join(sourceDir, skill)
-		meta, err := install.ReadMeta(skillPath)
+		entry := store.Get(skill)
 
-		if err != nil || meta == nil || meta.RepoURL == "" {
+		if entry == nil || entry.RepoURL == "" {
 			result := checkSkillResult{Name: skill, Status: "local"}
-			if meta != nil {
-				result.Source = meta.Source
-				result.Version = meta.Version
-				if !meta.InstalledAt.IsZero() {
-					result.InstalledAt = meta.InstalledAt.Format("2006-01-02")
+			if entry != nil {
+				result.Source = entry.Source
+				result.Version = entry.Version
+				if !entry.InstalledAt.IsZero() {
+					result.InstalledAt = entry.InstalledAt.Format("2006-01-02")
 				}
 			}
 			localResults = append(localResults, result)
 			continue
 		}
 
-		groupKey := urlBranchKey(meta.RepoURL, meta.Branch)
+		groupKey := urlBranchKey(entry.RepoURL, entry.Branch)
 		urlGroups[groupKey] = append(urlGroups[groupKey], skillWithMeta{
 			name: skill,
 			path: skillPath,
-			meta: meta,
+			meta: entry,
 		})
 	}
 
@@ -539,7 +545,7 @@ func resolveSkillStatuses(
 		// Pre-fill base result fields for each skill
 		type pending struct {
 			result checkSkillResult
-			meta   *install.SkillMeta
+			meta   *install.MetadataEntry
 		}
 		items := make([]pending, len(group))
 		for i, sw := range group {
@@ -744,10 +750,12 @@ func runCheckFiltered(sourceDir string, opts *checkOptions) error {
 		// Single skill: show per-skill detail like update does
 		if len(targets) == 1 && !targets[0].isRepo {
 			t := targets[0]
-			skillPath := filepath.Join(sourceDir, t.name)
-			if meta, metaErr := install.ReadMeta(skillPath); metaErr == nil && meta != nil && meta.Source != "" {
-				ui.StepContinue("Skill", t.name)
-				ui.StepContinue("Source", meta.Source)
+			detailStore, _ := install.LoadMetadata(sourceDir)
+			if detailStore != nil {
+				if entry := detailStore.Get(t.name); entry != nil && entry.Source != "" {
+					ui.StepContinue("Skill", t.name)
+					ui.StepContinue("Source", entry.Source)
+				}
 			}
 		}
 	}

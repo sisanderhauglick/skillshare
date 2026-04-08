@@ -671,7 +671,7 @@ func checkSkillIntegrity(result *doctorResult, discovered []sync.DiscoveredSkill
 		return
 	}
 
-	// Phase 1: filter to skills that have meta with file hashes (cheap ReadMeta only)
+	// Phase 1: filter to skills that have meta with file hashes
 	type verifiable struct {
 		name   string
 		path   string
@@ -680,22 +680,31 @@ func checkSkillIntegrity(result *doctorResult, discovered []sync.DiscoveredSkill
 	var toVerify []verifiable
 	var skippedNames []string
 
+	// Load centralized metadata store once.
+	var store *install.MetadataStore
+	if len(discovered) > 0 {
+		sourceDir := strings.TrimSuffix(discovered[0].SourcePath, discovered[0].RelPath)
+		sourceDir = strings.TrimRight(sourceDir, `/\`)
+		store, _ = install.LoadMetadata(sourceDir)
+	}
+	if store == nil {
+		store = install.NewMetadataStore()
+	}
+
 	for _, skill := range discovered {
-		meta, err := install.ReadMeta(skill.SourcePath)
-		if err != nil {
-			continue
-		}
-		if meta == nil {
+		skillName := filepath.Base(skill.SourcePath)
+		entry := store.Get(skillName)
+		if entry == nil {
 			continue // Local skill without meta — expected, skip silently
 		}
-		if meta.FileHashes == nil {
+		if entry.FileHashes == nil {
 			skippedNames = append(skippedNames, skill.RelPath)
 			continue
 		}
 		toVerify = append(toVerify, verifiable{
 			name:   skill.RelPath,
 			path:   skill.SourcePath,
-			stored: meta.FileHashes,
+			stored: entry.FileHashes,
 		})
 	}
 
