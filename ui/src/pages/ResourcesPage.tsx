@@ -469,14 +469,12 @@ function saveCollapsed(collapsed: Set<string>) {
 /* -- Filter, Sort & View types -------------------- */
 
 type ResourceTab = 'skills' | 'agents';
-type FilterType = 'all' | 'skills' | 'agents' | 'tracked' | 'github' | 'local';
+type FilterType = 'all' | 'tracked' | 'github' | 'local';
 type SortType = 'name-asc' | 'name-desc' | 'newest' | 'oldest';
 type ViewType = 'grid' | 'grouped' | 'table';
 
 const filterOptions: { key: FilterType; label: string; icon: React.ReactNode }[] = [
   { key: 'all', label: 'All', icon: <LayoutGrid size={14} strokeWidth={2.5} /> },
-  { key: 'skills', label: 'Skills', icon: <Puzzle size={14} strokeWidth={2.5} /> },
-  { key: 'agents', label: 'Agents', icon: <Bot size={14} strokeWidth={2.5} /> },
   { key: 'tracked', label: 'Tracked', icon: <Users size={14} strokeWidth={2.5} /> },
   { key: 'github', label: 'GitHub', icon: <Globe size={14} strokeWidth={2.5} /> },
   { key: 'local', label: 'Local', icon: <FolderOpen size={14} strokeWidth={2.5} /> },
@@ -486,10 +484,6 @@ function matchFilter(skill: Skill, filterType: FilterType): boolean {
   switch (filterType) {
     case 'all':
       return true;
-    case 'skills':
-      return skill.kind !== 'agent';
-    case 'agents':
-      return skill.kind === 'agent';
     case 'tracked':
       return skill.isInRepo;
     case 'github':
@@ -759,25 +753,24 @@ export default function SkillsPage() {
 
   const skills = data?.skills ?? [];
 
-  // Compute counts for each filter type (before text search, so chips always show totals)
+  // Compute counts for each filter type — scoped to the active tab
   const filterCounts = useMemo(() => {
+    const tabSkills = activeTab === 'agents'
+      ? skills.filter((s) => s.kind === 'agent')
+      : skills.filter((s) => s.kind !== 'agent');
     const counts: Record<FilterType, number> = {
-      all: skills.length,
-      skills: 0,
-      agents: 0,
+      all: tabSkills.length,
       tracked: 0,
       github: 0,
       local: 0,
     };
-    for (const s of skills) {
-      if (s.kind === 'agent') counts.agents++;
-      else counts.skills++;
+    for (const s of tabSkills) {
       if (s.isInRepo) counts.tracked++;
       if ((s.type === 'github' || s.type === 'github-subdir') && !s.isInRepo) counts.github++;
       if (!s.type && !s.isInRepo) counts.local++;
     }
     return counts;
-  }, [skills]);
+  }, [skills, activeTab]);
 
   // Apply text filter -> type filter -> sort
   const filtered = useMemo(() => {

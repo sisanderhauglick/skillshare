@@ -3,8 +3,10 @@
 package integration
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"skillshare/internal/testutil"
@@ -172,4 +174,58 @@ targets:
 	result.AssertSuccess(t)
 	result.AssertAnyOutputContains(t, "1 agents")
 	result.AssertOutputNotContains(t, "drift")
+}
+
+func TestCollect_Agents_WritesOplog(t *testing.T) {
+	sb := testutil.NewSandbox(t)
+	defer sb.Cleanup()
+
+	createAgentSource(t, sb, nil)
+	claudeAgents := createAgentTarget(t, sb, "claude")
+	if err := os.WriteFile(filepath.Join(claudeAgents, "local-agent.md"), []byte("# Local"), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	sb.WriteConfig(`source: ` + sb.SourcePath + `
+targets:
+  claude:
+    skills:
+      path: ` + sb.CreateTarget("claude") + `
+    agents:
+      path: ` + claudeAgents + `
+`)
+
+	collectResult := sb.RunCLI("collect", "agents", "claude", "--force")
+	collectResult.AssertSuccess(t)
+
+	logResult := sb.RunCLI("log", "--json", "--cmd", "collect", "--tail", "1")
+	logResult.AssertSuccess(t)
+
+	line := strings.TrimSpace(logResult.Stdout)
+	if line == "" {
+		t.Fatal("expected collect oplog entry")
+	}
+
+	var entry map[string]any
+	if err := json.Unmarshal([]byte(line), &entry); err != nil {
+		t.Fatalf("failed to parse log entry: %v\nstdout=%s", err, logResult.Stdout)
+	}
+
+	if entry["cmd"] != "collect" {
+		t.Fatalf("expected cmd=collect, got %v", entry["cmd"])
+	}
+	if entry["status"] != "ok" {
+		t.Fatalf("expected status=ok, got %v", entry["status"])
+	}
+
+	args, ok := entry["args"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected args object, got %T", entry["args"])
+	}
+	if args["kind"] != "agents" {
+		t.Fatalf("expected kind=agents, got %v", args["kind"])
+	}
+	if args["pulled"] != float64(1) {
+		t.Fatalf("expected pulled=1, got %v", args["pulled"])
+	}
 }

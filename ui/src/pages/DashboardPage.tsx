@@ -135,15 +135,6 @@ export default function DashboardPage() {
       to: '/targets',
     },
     {
-      label: 'Sync Mode',
-      value: data.mode,
-      subtitle: 'current mode',
-      icon: FolderSync,
-      color: 'text-warning',
-      bg: 'bg-warning-light',
-      to: '/sync',
-    },
-    {
       label: 'Extras',
       value: extrasData?.extras?.length ?? 0,
       subtitle: `${totalExtraFiles} files · ${totalExtraTargets} targets`,
@@ -164,6 +155,7 @@ export default function DashboardPage() {
           <Link key={label} to={to}>
             <Card
               hover
+              className="h-full"
             >
               <div className="flex items-start gap-3">
                 <div

@@ -4,6 +4,8 @@ package integration
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -772,5 +774,160 @@ func TestCollect_JSON_NoLocalSkills(t *testing.T) {
 	}
 	if _, ok := output["dry_run"]; !ok {
 		t.Error("missing 'dry_run' field")
+	}
+}
+
+func TestCollect_JSON_ProjectSkills_PureJSON(t *testing.T) {
+	sb := testutil.NewSandbox(t)
+	defer sb.Cleanup()
+
+	projectDir := sb.SetupProjectDir("claude")
+	targetSkillDir := filepath.Join(projectDir, ".claude", "skills", "local-skill")
+	if err := os.MkdirAll(targetSkillDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(targetSkillDir, "SKILL.md"), []byte("# Local"), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	result := sb.RunCLIInDir(projectDir, "collect", "-p", "--json")
+	result.AssertSuccess(t)
+
+	stdout := strings.TrimSpace(result.Stdout)
+	assertPureJSON(t, stdout)
+
+	output := parseJSON(t, stdout)
+	pulled, ok := output["pulled"].([]any)
+	if !ok || len(pulled) != 1 || pulled[0] != "local-skill" {
+		t.Fatalf("expected pulled=[local-skill], got %v", output["pulled"])
+	}
+}
+
+func TestCollect_Agents_JSON_OutputsValidJSON(t *testing.T) {
+	sb := testutil.NewSandbox(t)
+	defer sb.Cleanup()
+
+	createAgentSource(t, sb, nil)
+	claudeAgents := createAgentTarget(t, sb, "claude")
+	if err := os.WriteFile(filepath.Join(claudeAgents, "local-agent.md"), []byte("# Local"), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	sb.WriteConfig(`source: ` + sb.SourcePath + `
+targets:
+  claude:
+    skills:
+      path: ` + sb.CreateTarget("claude") + `
+    agents:
+      path: ` + claudeAgents + `
+`)
+
+	result := sb.RunCLI("collect", "agents", "claude", "--json")
+	result.AssertSuccess(t)
+
+	stdout := strings.TrimSpace(result.Stdout)
+	assertPureJSON(t, stdout)
+
+	output := parseJSON(t, stdout)
+	pulled, ok := output["pulled"].([]any)
+	if !ok || len(pulled) != 1 || pulled[0] != "local-agent.md" {
+		t.Fatalf("expected pulled=[local-agent.md], got %v", output["pulled"])
+	}
+	if output["dry_run"] != false {
+		t.Errorf("dry_run should be false, got %v", output["dry_run"])
+	}
+}
+
+func TestCollect_Agents_JSON_DryRun_DoesNotWrite(t *testing.T) {
+	sb := testutil.NewSandbox(t)
+	defer sb.Cleanup()
+
+	agentsSource := createAgentSource(t, sb, nil)
+	claudeAgents := createAgentTarget(t, sb, "claude")
+	if err := os.WriteFile(filepath.Join(claudeAgents, "local-agent.md"), []byte("# Local"), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	sb.WriteConfig(`source: ` + sb.SourcePath + `
+targets:
+  claude:
+    skills:
+      path: ` + sb.CreateTarget("claude") + `
+    agents:
+      path: ` + claudeAgents + `
+`)
+
+	result := sb.RunCLI("collect", "agents", "claude", "--json", "--dry-run")
+	result.AssertSuccess(t)
+
+	output := parseJSON(t, strings.TrimSpace(result.Stdout))
+	if output["dry_run"] != true {
+		t.Errorf("dry_run should be true, got %v", output["dry_run"])
+	}
+
+	if _, err := os.Stat(filepath.Join(agentsSource, "local-agent.md")); !os.IsNotExist(err) {
+		t.Error("dry-run should not collect local-agent.md")
+	}
+}
+
+func TestCollect_Agents_JSON_ImpliesForceAndOverwrites(t *testing.T) {
+	sb := testutil.NewSandbox(t)
+	defer sb.Cleanup()
+
+	agentsSource := createAgentSource(t, sb, map[string]string{
+		"local-agent.md": "# Source version",
+	})
+	claudeAgents := createAgentTarget(t, sb, "claude")
+	if err := os.WriteFile(filepath.Join(claudeAgents, "local-agent.md"), []byte("# Target version"), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	sb.WriteConfig(`source: ` + sb.SourcePath + `
+targets:
+  claude:
+    skills:
+      path: ` + sb.CreateTarget("claude") + `
+    agents:
+      path: ` + claudeAgents + `
+`)
+
+	result := sb.RunCLI("collect", "agents", "claude", "--json")
+	result.AssertSuccess(t)
+
+	output := parseJSON(t, strings.TrimSpace(result.Stdout))
+	pulled, ok := output["pulled"].([]any)
+	if !ok || len(pulled) != 1 || pulled[0] != "local-agent.md" {
+		t.Fatalf("expected pulled=[local-agent.md], got %v", output["pulled"])
+	}
+
+	content, err := os.ReadFile(filepath.Join(agentsSource, "local-agent.md"))
+	if err != nil {
+		t.Fatalf("failed to read source agent: %v", err)
+	}
+	if string(content) != "# Target version" {
+		t.Errorf("expected overwrite via --json, got %q", string(content))
+	}
+}
+
+func TestCollect_Project_Agents_JSON_PureJSON(t *testing.T) {
+	sb := testutil.NewSandbox(t)
+	defer sb.Cleanup()
+
+	projectDir := setupProjectWithAgents(t, sb)
+	claudeAgents := filepath.Join(projectDir, ".claude", "agents")
+	if err := os.WriteFile(filepath.Join(claudeAgents, "local-agent.md"), []byte("# Local"), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	result := sb.RunCLIInDir(projectDir, "collect", "-p", "agents", "--json")
+	result.AssertSuccess(t)
+
+	stdout := strings.TrimSpace(result.Stdout)
+	assertPureJSON(t, stdout)
+
+	output := parseJSON(t, stdout)
+	pulled, ok := output["pulled"].([]any)
+	if !ok || len(pulled) != 1 || pulled[0] != "local-agent.md" {
+		t.Fatalf("expected pulled=[local-agent.md], got %v", output["pulled"])
 	}
 }

@@ -198,15 +198,15 @@ func TestPruneOrphanAgentLinks_NonExistentDir(t *testing.T) {
 	}
 }
 
-func TestCollectAgents(t *testing.T) {
+func TestFindLocalAgentsAndPullAgents(t *testing.T) {
 	targetDir := t.TempDir()
-	agentSourceDir := t.TempDir()
+	sourceDir := t.TempDir()
 
 	// Create a local (non-symlink) agent file in target
 	os.WriteFile(filepath.Join(targetDir, "new-agent.md"), []byte("# New agent"), 0644)
 
 	// Create a symlink (should be skipped)
-	srcFile := filepath.Join(agentSourceDir, "existing.md")
+	srcFile := filepath.Join(sourceDir, "existing.md")
 	os.WriteFile(srcFile, []byte("# Existing"), 0644)
 	os.Symlink(srcFile, filepath.Join(targetDir, "existing.md"))
 
@@ -217,16 +217,24 @@ func TestCollectAgents(t *testing.T) {
 	os.WriteFile(filepath.Join(targetDir, "config.yaml"), []byte("key: val"), 0644)
 
 	collectDir := t.TempDir()
-	collected, err := CollectAgents(targetDir, collectDir, false, nil)
+	agents, err := FindLocalAgents(targetDir, collectDir)
 	if err != nil {
-		t.Fatalf("CollectAgents: %v", err)
+		t.Fatalf("FindLocalAgents: %v", err)
 	}
 
-	if len(collected) != 1 {
-		t.Fatalf("expected 1 collected, got %d: %v", len(collected), collected)
+	if len(agents) != 1 {
+		t.Fatalf("expected 1 local agent, got %d: %v", len(agents), agents)
 	}
-	if collected[0] != "new-agent.md" {
-		t.Errorf("collected = %q, want %q", collected[0], "new-agent.md")
+	if agents[0].Name != "new-agent.md" {
+		t.Errorf("agent name = %q, want %q", agents[0].Name, "new-agent.md")
+	}
+
+	result, err := PullAgents(agents, collectDir, PullOptions{})
+	if err != nil {
+		t.Fatalf("PullAgents: %v", err)
+	}
+	if len(result.Pulled) != 1 || result.Pulled[0] != "new-agent.md" {
+		t.Fatalf("expected pulled=[new-agent.md], got %#v", result)
 	}
 
 	// Verify file was copied
@@ -236,6 +244,81 @@ func TestCollectAgents(t *testing.T) {
 	}
 	if string(data) != "# New agent" {
 		t.Errorf("collected content = %q", string(data))
+	}
+}
+
+func TestFindLocalAgents_TargetSymlinkToSource_ReturnsEmpty(t *testing.T) {
+	sourceDir := t.TempDir()
+	targetParent := t.TempDir()
+	targetDir := filepath.Join(targetParent, "agents")
+
+	os.WriteFile(filepath.Join(sourceDir, "tutor.md"), []byte("# Tutor"), 0644)
+	os.Symlink(sourceDir, targetDir)
+
+	agents, err := FindLocalAgents(targetDir, sourceDir)
+	if err != nil {
+		t.Fatalf("FindLocalAgents: %v", err)
+	}
+	if len(agents) != 0 {
+		t.Fatalf("expected 0 local agents, got %d", len(agents))
+	}
+}
+
+func TestPullAgents_SkipsExistingWithoutForce(t *testing.T) {
+	targetDir := t.TempDir()
+	collectDir := t.TempDir()
+
+	os.WriteFile(filepath.Join(targetDir, "agent.md"), []byte("# Target"), 0644)
+	os.WriteFile(filepath.Join(collectDir, "agent.md"), []byte("# Source"), 0644)
+
+	agents, err := FindLocalAgents(targetDir, collectDir)
+	if err != nil {
+		t.Fatalf("FindLocalAgents: %v", err)
+	}
+
+	result, err := PullAgents(agents, collectDir, PullOptions{})
+	if err != nil {
+		t.Fatalf("PullAgents: %v", err)
+	}
+	if len(result.Skipped) != 1 || result.Skipped[0] != "agent.md" {
+		t.Fatalf("expected skipped=[agent.md], got %#v", result)
+	}
+
+	data, err := os.ReadFile(filepath.Join(collectDir, "agent.md"))
+	if err != nil {
+		t.Fatalf("read source agent: %v", err)
+	}
+	if string(data) != "# Source" {
+		t.Fatalf("source agent should remain unchanged, got %q", string(data))
+	}
+}
+
+func TestPullAgents_ForceOverwritesExisting(t *testing.T) {
+	targetDir := t.TempDir()
+	collectDir := t.TempDir()
+
+	os.WriteFile(filepath.Join(targetDir, "agent.md"), []byte("# Target"), 0644)
+	os.WriteFile(filepath.Join(collectDir, "agent.md"), []byte("# Source"), 0644)
+
+	agents, err := FindLocalAgents(targetDir, collectDir)
+	if err != nil {
+		t.Fatalf("FindLocalAgents: %v", err)
+	}
+
+	result, err := PullAgents(agents, collectDir, PullOptions{Force: true})
+	if err != nil {
+		t.Fatalf("PullAgents: %v", err)
+	}
+	if len(result.Pulled) != 1 || result.Pulled[0] != "agent.md" {
+		t.Fatalf("expected pulled=[agent.md], got %#v", result)
+	}
+
+	data, err := os.ReadFile(filepath.Join(collectDir, "agent.md"))
+	if err != nil {
+		t.Fatalf("read source agent: %v", err)
+	}
+	if string(data) != "# Target" {
+		t.Fatalf("source agent should be overwritten, got %q", string(data))
 	}
 }
 
@@ -509,18 +592,23 @@ func TestSyncAgents_MergeMode_NestedSameBasename_IsStable(t *testing.T) {
 	}
 }
 
-func TestCollectAgents_DryRun(t *testing.T) {
+func TestPullAgents_DryRun(t *testing.T) {
 	targetDir := t.TempDir()
 	os.WriteFile(filepath.Join(targetDir, "agent.md"), []byte("# Agent"), 0644)
 
 	collectDir := t.TempDir()
-	collected, err := CollectAgents(targetDir, collectDir, true, nil)
+	agents, err := FindLocalAgents(targetDir, collectDir)
 	if err != nil {
-		t.Fatalf("CollectAgents dry-run: %v", err)
+		t.Fatalf("FindLocalAgents: %v", err)
 	}
 
-	if len(collected) != 1 {
-		t.Fatalf("expected 1 collected in dry-run, got %d", len(collected))
+	result, err := PullAgents(agents, collectDir, PullOptions{DryRun: true})
+	if err != nil {
+		t.Fatalf("PullAgents dry-run: %v", err)
+	}
+
+	if len(result.Pulled) != 1 {
+		t.Fatalf("expected 1 collected in dry-run, got %d", len(result.Pulled))
 	}
 
 	// File should NOT exist (dry-run)

@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -47,6 +48,43 @@ func setupProjectWithAgents(t *testing.T, sb *testutil.Sandbox) string {
 	// Global config (needed by CLI)
 	sb.WriteConfig(`source: ` + sb.SourcePath + "\ntargets: {}\n")
 
+	return projectDir
+}
+
+func setupProjectWithMultipleAgentTargets(t *testing.T, sb *testutil.Sandbox) string {
+	t.Helper()
+
+	projectDir := filepath.Join(sb.Root, "multi-agent-project")
+	skillsDir := filepath.Join(projectDir, ".skillshare", "skills")
+	agentsDir := filepath.Join(projectDir, ".skillshare", "agents")
+	claudeSkills := filepath.Join(projectDir, ".claude", "skills")
+	claudeAgents := filepath.Join(projectDir, ".claude", "agents")
+	cursorSkills := filepath.Join(projectDir, ".cursor", "skills")
+	cursorAgents := filepath.Join(projectDir, ".cursor", "agents")
+
+	for _, dir := range []string{skillsDir, agentsDir, claudeSkills, claudeAgents, cursorSkills, cursorAgents} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatalf("failed to create %s: %v", dir, err)
+		}
+	}
+
+	configContent := `targets:
+  - name: claude
+    skills:
+      path: ` + claudeSkills + `
+    agents:
+      path: ` + claudeAgents + `
+  - name: cursor
+    skills:
+      path: ` + cursorSkills + `
+    agents:
+      path: ` + cursorAgents + `
+`
+	if err := os.WriteFile(filepath.Join(projectDir, ".skillshare", "config.yaml"), []byte(configContent), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	sb.WriteConfig(`source: ` + sb.SourcePath + "\ntargets: {}\n")
 	return projectDir
 }
 
@@ -155,7 +193,7 @@ func TestCollectProject_Agents_CollectsLocal(t *testing.T) {
 	claudeAgents := filepath.Join(projectDir, ".claude", "agents")
 	os.WriteFile(filepath.Join(claudeAgents, "local-agent.md"), []byte("# Local"), 0644)
 
-	result := sb.RunCLIInDir(projectDir, "collect", "-p", "agents")
+	result := sb.RunCLIInDir(projectDir, "collect", "-p", "agents", "--force")
 	result.AssertSuccess(t)
 	result.AssertAnyOutputContains(t, "collected")
 
@@ -163,6 +201,95 @@ func TestCollectProject_Agents_CollectsLocal(t *testing.T) {
 	agentsSource := filepath.Join(projectDir, ".skillshare", "agents")
 	if _, err := os.Stat(filepath.Join(agentsSource, "local-agent.md")); err != nil {
 		t.Error("local-agent.md should be collected to project agents source")
+	}
+}
+
+func TestCollectProject_Agents_DryRun_DoesNotWrite(t *testing.T) {
+	sb := testutil.NewSandbox(t)
+	defer sb.Cleanup()
+
+	projectDir := setupProjectWithAgents(t, sb)
+	claudeAgents := filepath.Join(projectDir, ".claude", "agents")
+	os.WriteFile(filepath.Join(claudeAgents, "local-agent.md"), []byte("# Local"), 0644)
+
+	result := sb.RunCLIInDir(projectDir, "collect", "-p", "agents", "--dry-run")
+	result.AssertSuccess(t)
+	result.AssertAnyOutputContains(t, "Dry run")
+
+	agentsSource := filepath.Join(projectDir, ".skillshare", "agents")
+	if _, err := os.Stat(filepath.Join(agentsSource, "local-agent.md")); !os.IsNotExist(err) {
+		t.Error("dry-run should not collect local-agent.md")
+	}
+}
+
+func TestCollectProject_Agents_JSON(t *testing.T) {
+	sb := testutil.NewSandbox(t)
+	defer sb.Cleanup()
+
+	projectDir := setupProjectWithAgents(t, sb)
+	claudeAgents := filepath.Join(projectDir, ".claude", "agents")
+	os.WriteFile(filepath.Join(claudeAgents, "local-agent.md"), []byte("# Local"), 0644)
+
+	result := sb.RunCLIInDir(projectDir, "collect", "-p", "agents", "--json")
+	result.AssertSuccess(t)
+
+	var output map[string]any
+	if err := json.Unmarshal([]byte(result.Stdout), &output); err != nil {
+		t.Fatalf("invalid JSON output: %v\nStdout: %s", err, result.Stdout)
+	}
+
+	pulled, ok := output["pulled"].([]any)
+	if !ok || len(pulled) != 1 || pulled[0] != "local-agent.md" {
+		t.Fatalf("expected pulled=[local-agent.md], got %v", output["pulled"])
+	}
+}
+
+func TestCollectProject_Agents_SpecificTargetOnly(t *testing.T) {
+	sb := testutil.NewSandbox(t)
+	defer sb.Cleanup()
+
+	projectDir := setupProjectWithMultipleAgentTargets(t, sb)
+	claudeAgents := filepath.Join(projectDir, ".claude", "agents")
+	cursorAgents := filepath.Join(projectDir, ".cursor", "agents")
+	agentsSource := filepath.Join(projectDir, ".skillshare", "agents")
+
+	os.WriteFile(filepath.Join(claudeAgents, "claude-agent.md"), []byte("# Claude"), 0644)
+	os.WriteFile(filepath.Join(cursorAgents, "cursor-agent.md"), []byte("# Cursor"), 0644)
+
+	result := sb.RunCLIInDir(projectDir, "collect", "-p", "agents", "claude", "--force")
+	result.AssertSuccess(t)
+	result.AssertAnyOutputContains(t, "claude-agent.md")
+	result.AssertOutputNotContains(t, "cursor-agent.md")
+
+	if _, err := os.Stat(filepath.Join(agentsSource, "claude-agent.md")); err != nil {
+		t.Error("claude-agent.md should be collected")
+	}
+	if _, err := os.Stat(filepath.Join(agentsSource, "cursor-agent.md")); !os.IsNotExist(err) {
+		t.Error("cursor-agent.md should not be collected")
+	}
+}
+
+func TestCollectProject_Agents_MultipleTargets_RequiresAllOrName(t *testing.T) {
+	sb := testutil.NewSandbox(t)
+	defer sb.Cleanup()
+
+	projectDir := setupProjectWithMultipleAgentTargets(t, sb)
+	claudeAgents := filepath.Join(projectDir, ".claude", "agents")
+	cursorAgents := filepath.Join(projectDir, ".cursor", "agents")
+	agentsSource := filepath.Join(projectDir, ".skillshare", "agents")
+
+	os.WriteFile(filepath.Join(claudeAgents, "claude-agent.md"), []byte("# Claude"), 0644)
+	os.WriteFile(filepath.Join(cursorAgents, "cursor-agent.md"), []byte("# Cursor"), 0644)
+
+	result := sb.RunCLIInDir(projectDir, "collect", "-p", "agents")
+	result.AssertSuccess(t)
+	result.AssertAnyOutputContains(t, "Specify a target")
+
+	if _, err := os.Stat(filepath.Join(agentsSource, "claude-agent.md")); !os.IsNotExist(err) {
+		t.Error("claude-agent.md should not be collected without target selection")
+	}
+	if _, err := os.Stat(filepath.Join(agentsSource, "cursor-agent.md")); !os.IsNotExist(err) {
+		t.Error("cursor-agent.md should not be collected without target selection")
 	}
 }
 

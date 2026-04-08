@@ -175,13 +175,181 @@ targets:
 
 	agentsSource := filepath.Join(filepath.Dir(sb.SourcePath), "agents")
 
-	result := sb.RunCLI("collect", "agents")
+	result := sb.RunCLI("collect", "agents", "--force")
 	result.AssertSuccess(t)
 	result.AssertAnyOutputContains(t, "collected")
 
 	// Verify the file was copied to agent source
 	if _, err := os.Stat(filepath.Join(agentsSource, "local-agent.md")); err != nil {
 		t.Error("local-agent.md should be collected to agent source")
+	}
+}
+
+func TestCollect_Agents_SpecificTargetOnly(t *testing.T) {
+	sb := testutil.NewSandbox(t)
+	defer sb.Cleanup()
+
+	agentsSource := createAgentSource(t, sb, nil)
+	claudeAgents := createAgentTarget(t, sb, "claude")
+	cursorAgents := createAgentTarget(t, sb, "cursor")
+
+	os.WriteFile(filepath.Join(claudeAgents, "claude-agent.md"), []byte("# Claude"), 0644)
+	os.WriteFile(filepath.Join(cursorAgents, "cursor-agent.md"), []byte("# Cursor"), 0644)
+
+	sb.WriteConfig(`source: ` + sb.SourcePath + `
+targets:
+  claude:
+    skills:
+      path: ` + sb.CreateTarget("claude") + `
+    agents:
+      path: ` + claudeAgents + `
+  cursor:
+    skills:
+      path: ` + sb.CreateTarget("cursor") + `
+    agents:
+      path: ` + cursorAgents + `
+`)
+
+	result := sb.RunCLI("collect", "agents", "claude", "--force")
+	result.AssertSuccess(t)
+	result.AssertAnyOutputContains(t, "claude-agent.md")
+	result.AssertOutputNotContains(t, "cursor-agent.md")
+
+	if _, err := os.Stat(filepath.Join(agentsSource, "claude-agent.md")); err != nil {
+		t.Error("claude-agent.md should be collected")
+	}
+	if _, err := os.Stat(filepath.Join(agentsSource, "cursor-agent.md")); !os.IsNotExist(err) {
+		t.Error("cursor-agent.md should not be collected")
+	}
+}
+
+func TestCollect_Agents_MultipleTargets_RequiresAllOrName(t *testing.T) {
+	sb := testutil.NewSandbox(t)
+	defer sb.Cleanup()
+
+	agentsSource := createAgentSource(t, sb, nil)
+	claudeAgents := createAgentTarget(t, sb, "claude")
+	cursorAgents := createAgentTarget(t, sb, "cursor")
+
+	os.WriteFile(filepath.Join(claudeAgents, "claude-agent.md"), []byte("# Claude"), 0644)
+	os.WriteFile(filepath.Join(cursorAgents, "cursor-agent.md"), []byte("# Cursor"), 0644)
+
+	sb.WriteConfig(`source: ` + sb.SourcePath + `
+targets:
+  claude:
+    skills:
+      path: ` + sb.CreateTarget("claude") + `
+    agents:
+      path: ` + claudeAgents + `
+  cursor:
+    skills:
+      path: ` + sb.CreateTarget("cursor") + `
+    agents:
+      path: ` + cursorAgents + `
+`)
+
+	result := sb.RunCLI("collect", "agents")
+	result.AssertSuccess(t)
+	result.AssertAnyOutputContains(t, "Specify a target")
+
+	if _, err := os.Stat(filepath.Join(agentsSource, "claude-agent.md")); !os.IsNotExist(err) {
+		t.Error("claude-agent.md should not be collected without target selection")
+	}
+	if _, err := os.Stat(filepath.Join(agentsSource, "cursor-agent.md")); !os.IsNotExist(err) {
+		t.Error("cursor-agent.md should not be collected without target selection")
+	}
+}
+
+func TestCollect_Agents_DryRun_DoesNotWrite(t *testing.T) {
+	sb := testutil.NewSandbox(t)
+	defer sb.Cleanup()
+
+	agentsSource := createAgentSource(t, sb, nil)
+	claudeAgents := createAgentTarget(t, sb, "claude")
+
+	os.WriteFile(filepath.Join(claudeAgents, "local-agent.md"), []byte("# Local agent"), 0644)
+
+	sb.WriteConfig(`source: ` + sb.SourcePath + `
+targets:
+  claude:
+    skills:
+      path: ` + sb.CreateTarget("claude") + `
+    agents:
+      path: ` + claudeAgents + `
+`)
+
+	result := sb.RunCLI("collect", "agents", "--dry-run")
+	result.AssertSuccess(t)
+	result.AssertAnyOutputContains(t, "Dry run")
+
+	if _, err := os.Stat(filepath.Join(agentsSource, "local-agent.md")); !os.IsNotExist(err) {
+		t.Error("dry-run should not collect local-agent.md")
+	}
+}
+
+func TestCollect_Agents_ExistingSource_SkipsWithoutForce(t *testing.T) {
+	sb := testutil.NewSandbox(t)
+	defer sb.Cleanup()
+
+	agentsSource := createAgentSource(t, sb, map[string]string{
+		"local-agent.md": "# Source version",
+	})
+	claudeAgents := createAgentTarget(t, sb, "claude")
+
+	os.WriteFile(filepath.Join(claudeAgents, "local-agent.md"), []byte("# Target version"), 0644)
+
+	sb.WriteConfig(`source: ` + sb.SourcePath + `
+targets:
+  claude:
+    skills:
+      path: ` + sb.CreateTarget("claude") + `
+    agents:
+      path: ` + claudeAgents + `
+`)
+
+	result := sb.RunCLIWithInput("y\n", "collect", "agents", "claude")
+	result.AssertSuccess(t)
+	result.AssertAnyOutputContains(t, "skipped")
+
+	content, err := os.ReadFile(filepath.Join(agentsSource, "local-agent.md"))
+	if err != nil {
+		t.Fatalf("failed to read source agent: %v", err)
+	}
+	if string(content) != "# Source version" {
+		t.Errorf("source agent should not be overwritten, got %q", string(content))
+	}
+}
+
+func TestCollect_Agents_Force_OverwritesSource(t *testing.T) {
+	sb := testutil.NewSandbox(t)
+	defer sb.Cleanup()
+
+	agentsSource := createAgentSource(t, sb, map[string]string{
+		"local-agent.md": "# Source version",
+	})
+	claudeAgents := createAgentTarget(t, sb, "claude")
+
+	os.WriteFile(filepath.Join(claudeAgents, "local-agent.md"), []byte("# Target version"), 0644)
+
+	sb.WriteConfig(`source: ` + sb.SourcePath + `
+targets:
+  claude:
+    skills:
+      path: ` + sb.CreateTarget("claude") + `
+    agents:
+      path: ` + claudeAgents + `
+`)
+
+	result := sb.RunCLI("collect", "agents", "claude", "--force")
+	result.AssertSuccess(t)
+	result.AssertAnyOutputContains(t, "copied to source")
+
+	content, err := os.ReadFile(filepath.Join(agentsSource, "local-agent.md"))
+	if err != nil {
+		t.Fatalf("failed to read source agent: %v", err)
+	}
+	if string(content) != "# Target version" {
+		t.Errorf("source agent should be overwritten, got %q", string(content))
 	}
 }
 

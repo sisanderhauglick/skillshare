@@ -2,111 +2,171 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
+	"time"
 
 	"skillshare/internal/config"
 	"skillshare/internal/sync"
 	"skillshare/internal/ui"
 )
 
-// cmdCollectAgents collects non-symlinked agent .md files from agent-capable targets
-// back to the agent source directory.
-func cmdCollectAgents(cfg *config.Config, dryRun, jsonOutput bool) error {
-	agentsSource := cfg.EffectiveAgentsSource()
+func collectLocalAgents(targets map[string]string, source string, warn bool) []sync.LocalAgentInfo {
+	var allLocalAgents []sync.LocalAgentInfo
+	for name, targetPath := range targets {
+		agents, err := sync.FindLocalAgents(targetPath, source)
+		if err != nil {
+			if warn {
+				ui.Warning("%s: %v", name, err)
+			}
+			continue
+		}
+		for i := range agents {
+			agents[i].TargetName = name
+		}
+		allLocalAgents = append(allLocalAgents, agents...)
+	}
+	return allLocalAgents
+}
 
-	if err := os.MkdirAll(agentsSource, 0755); err != nil {
-		return fmt.Errorf("cannot create agents source directory: %w", err)
+func agentDisplayItem(a sync.LocalAgentInfo) collectDisplayItem {
+	return collectDisplayItem{Name: a.Name, TargetName: a.TargetName, Path: a.Path}
+}
+
+func cmdCollectAgents(cfg *config.Config, opts collectOptions, start time.Time) (collectLogSummary, error) {
+	summary := newCollectLogSummary(kindAgents, "global", opts)
+
+	targets, err := selectCollectAgentTargets(cfg, opts.targetName, opts.collectAll, opts.jsonOutput)
+	if err != nil {
+		return summary, collectCommandError(err, opts.jsonOutput)
+	}
+	if targets == nil {
+		return summary, nil
 	}
 
+	source := cfg.EffectiveAgentsSource()
+	return runCollectPlan(collectPlan{
+		kind: kindAgents, source: source,
+		scan: func(warn bool) collectResources {
+			agents := collectLocalAgents(targets, source, warn)
+			return toCollectResources(agents, source, agentDisplayItem, sync.PullAgents)
+		},
+	}, opts, start, "global")
+}
+
+func selectCollectAgentTargets(cfg *config.Config, targetName string, collectAll, jsonOutput bool) (map[string]string, error) {
 	builtinAgents := config.DefaultAgentTargets()
-	var allCollected []string
 
-	if !jsonOutput {
-		ui.Header(ui.WithModeLabel("Collect agents"))
+	if targetName != "" {
+		target, ok := cfg.Targets[targetName]
+		if !ok {
+			return nil, fmt.Errorf("target '%s' not found", targetName)
+		}
+		agentPath := resolveAgentTargetPath(target, builtinAgents, targetName)
+		if agentPath == "" {
+			return nil, fmt.Errorf("target '%s' does not support agents", targetName)
+		}
+		return map[string]string{targetName: agentPath}, nil
 	}
 
+	targets := make(map[string]string)
 	for name := range cfg.Targets {
 		agentPath := resolveAgentTargetPath(cfg.Targets[name], builtinAgents, name)
 		if agentPath == "" {
 			continue
 		}
-
-		if _, err := os.Stat(agentPath); err != nil {
-			continue // target agent dir doesn't exist, skip
-		}
-
-		collected, err := sync.CollectAgents(agentPath, agentsSource, dryRun, os.Stdout)
-		if err != nil {
-			if !jsonOutput {
-				ui.Warning("%s: collect failed: %v", name, err)
-			}
-			continue
-		}
-
-		if len(collected) > 0 {
-			allCollected = append(allCollected, collected...)
-			if !jsonOutput {
-				ui.Success("%s: collected %d agent(s)", name, len(collected))
-			}
-		}
+		targets[name] = agentPath
 	}
 
-	if !jsonOutput {
-		if len(allCollected) == 0 {
-			ui.Info("No local agents found to collect")
-		} else {
-			fmt.Println()
-			ui.Info("Collected %d agent(s) to %s", len(allCollected), agentsSource)
-		}
+	if len(targets) == 0 {
+		return targets, nil
 	}
 
-	return nil
+	if collectAll || len(targets) <= 1 {
+		return targets, nil
+	}
+
+	if jsonOutput {
+		return nil, fmt.Errorf("multiple targets found; specify a target name or use --all")
+	}
+
+	ui.Warning("Multiple targets found. Specify a target name or use --all")
+	fmt.Println("  Available targets:")
+	for name := range targets {
+		fmt.Printf("    - %s\n", name)
+	}
+	return nil, nil
 }
 
-// cmdCollectProjectAgents collects non-symlinked agent .md files from project targets.
-func cmdCollectProjectAgents(projectRoot string) error {
-	agentsSource := filepath.Join(projectRoot, ".skillshare", "agents")
-	if err := os.MkdirAll(agentsSource, 0755); err != nil {
-		return fmt.Errorf("cannot create project agents directory: %w", err)
-	}
+func cmdCollectProjectAgents(projectRoot string, opts collectOptions, start time.Time) (collectLogSummary, error) {
+	summary := newCollectLogSummary(kindAgents, "project", opts)
 
 	projCfg, err := config.LoadProject(projectRoot)
 	if err != nil {
-		return fmt.Errorf("cannot load project config: %w", err)
+		return summary, collectCommandError(fmt.Errorf("cannot load project config: %w", err), opts.jsonOutput)
 	}
 
+	targets, err := selectCollectProjectAgentTargets(projCfg, projectRoot, opts.targetName, opts.collectAll, opts.jsonOutput)
+	if err != nil {
+		return summary, collectCommandError(err, opts.jsonOutput)
+	}
+	if targets == nil {
+		return summary, nil
+	}
+
+	source := filepath.Join(projectRoot, ".skillshare", "agents")
+	return runCollectPlan(collectPlan{
+		kind: kindAgents, source: source,
+		scan: func(warn bool) collectResources {
+			agents := collectLocalAgents(targets, source, warn)
+			return toCollectResources(agents, source, agentDisplayItem, sync.PullAgents)
+		},
+	}, opts, start, "project")
+}
+
+func selectCollectProjectAgentTargets(projCfg *config.ProjectConfig, projectRoot, targetName string, collectAll, jsonOutput bool) (map[string]string, error) {
 	builtinAgents := config.ProjectAgentTargets()
-	var allCollected []string
 
-	ui.Header(ui.WithModeLabel("Collect agents"))
+	if targetName != "" {
+		for _, entry := range projCfg.Targets {
+			if entry.Name != targetName {
+				continue
+			}
+			agentPath := resolveProjectAgentTargetPath(entry, builtinAgents, projectRoot)
+			if agentPath == "" {
+				return nil, fmt.Errorf("target '%s' does not support agents in project config", targetName)
+			}
+			return map[string]string{targetName: agentPath}, nil
+		}
+		return nil, fmt.Errorf("target '%s' not found in project config", targetName)
+	}
 
+	targets := make(map[string]string)
 	for _, entry := range projCfg.Targets {
 		agentPath := resolveProjectAgentTargetPath(entry, builtinAgents, projectRoot)
 		if agentPath == "" {
 			continue
 		}
-		if _, statErr := os.Stat(agentPath); statErr != nil {
-			continue
-		}
-
-		collected, collectErr := sync.CollectAgents(agentPath, agentsSource, false, os.Stdout)
-		if collectErr != nil {
-			ui.Warning("%s: collect failed: %v", entry.Name, collectErr)
-			continue
-		}
-		if len(collected) > 0 {
-			allCollected = append(allCollected, collected...)
-			ui.Success("%s: collected %d agent(s)", entry.Name, len(collected))
-		}
+		targets[entry.Name] = agentPath
 	}
 
-	if len(allCollected) == 0 {
-		ui.Info("No local agents found to collect")
-	} else {
-		fmt.Println()
-		ui.Info("Collected %d agent(s) to %s", len(allCollected), agentsSource)
+	if len(targets) == 0 {
+		return targets, nil
 	}
 
-	return nil
+	if collectAll || len(targets) <= 1 {
+		return targets, nil
+	}
+
+	if jsonOutput {
+		return nil, fmt.Errorf("multiple targets found; specify a target name or use --all")
+	}
+
+	ui.Warning("Multiple targets found. Specify a target name or use --all")
+	fmt.Println("  Available targets:")
+	for _, entry := range projCfg.Targets {
+		if _, ok := targets[entry.Name]; ok {
+			fmt.Printf("    - %s\n", entry.Name)
+		}
+	}
+	return nil, nil
 }

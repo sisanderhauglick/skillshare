@@ -64,7 +64,7 @@ skillshare ui --no-open &
 | **Install** | Install from local path, git URL, or GitHub shorthand |
 | **Targets** | Target list with status badges. Add/remove targets |
 | **Sync** | Sync controls with dry-run toggle. Diff preview |
-| **Collect** | Scan targets and collect selected skills back to source |
+| **Collect** | Scan targets and collect selected skills back to source. Agent collect remains CLI-only. |
 | **Backup** | View backup list, restore snapshots, and clean up entries |
 | **Git Sync** | Push/pull source repo with dirty-state checks and force pull |
 | **Search** | GitHub skill search with one-click install |

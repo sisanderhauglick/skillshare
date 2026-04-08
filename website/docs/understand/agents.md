@@ -20,7 +20,7 @@ Some AI CLIs (Claude Code, Cursor, OpenCode, Augment) distinguish between **skil
 | **Project source** | `.skillshare/skills/` | `.skillshare/agents/` |
 | **Ignore file** | `.skillignore` | `.agentignore` |
 | **Sync unit** | Directory symlink (merge), whole-dir symlink (symlink), directory copy (copy) | File symlink (merge), whole-dir symlink (symlink), file copy (copy) |
-| **Nested support** | `path/to/skill` flattens to `path__to__skill` | `dir/file.md` flattens to `file.md` (directory prefix stripped) |
+| **Nested support** | `path/to/skill` flattens to `path__to__skill` | `dir/file.md` flattens to `dir__file.md` |
 | **Tracking** | Supported | Supported |
 | **Audit** | Supported | Supported |
 | **Collect** | Supported | Supported |
@@ -134,6 +134,32 @@ Orphan cleanup works the same way — broken symlinks or copied files that no lo
 
 ---
 
+## Collect Behavior
+
+Agent collect uses the same CLI contract as skill collect, but operates on `.md` agent files:
+
+```bash
+# Global
+skillshare collect agents claude
+skillshare collect agents --all
+skillshare collect agents claude --dry-run
+skillshare collect agents claude --json
+
+# Project
+skillshare collect -p agents claude
+skillshare collect -p agents --all
+skillshare collect -p agents --json
+```
+
+Rules:
+
+- Existing source agents are skipped by default
+- Use `--force` to overwrite existing source agents
+- `--json` implies `--force` and skips the confirmation prompt
+- The web dashboard Collect page is still skills-only; use the CLI for agents
+
+---
+
 ## `.agentignore`
 
 Works identically to `.skillignore` — gitignore-style patterns to exclude agents from sync.
@@ -195,6 +221,7 @@ Most commands accept a `agents` positional argument or `--kind agent` flag to sc
 | `check agents` | `skillshare check agents` | Check agent integrity and update status |
 | `audit agents` | `skillshare audit agents` | Security scan agents |
 | `sync agents` | `skillshare sync agents` | Sync only agents to targets |
+| `collect agents` | `skillshare collect agents claude` | Collect local target agents back to source |
 | `enable --kind agent` | `skillshare enable --kind agent tutor` | Re-enable a disabled agent |
 | `disable --kind agent` | `skillshare disable --kind agent tutor` | Disable an agent via `.agentignore` |
 | `install --kind agent` | `skillshare install repo --kind agent` | Install only agents from a repo |

@@ -371,7 +371,7 @@ export default function SkillDetailPage() {
           >
             {skill.name}
           </h2>
-          <KindBadge kind={skill.kind} size="md" />
+          <KindBadge kind={skill.kind} />
           {skill.disabled && <Badge variant="danger">disabled</Badge>}
           {skill.isInRepo && <Badge variant="warning">tracked repo</Badge>}
           {skillTypeLabel(skill.type) && <Badge variant="info">{skillTypeLabel(skill.type)}</Badge>}

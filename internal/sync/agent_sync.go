@@ -1,8 +1,8 @@
 package sync
 
 import (
+	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,6 +23,13 @@ type AgentCollision struct {
 	FlatName string // The colliding flat name (e.g. "helper.md")
 	PathA    string // First agent relative path
 	PathB    string // Second agent relative path
+}
+
+// LocalAgentInfo describes a local agent file in a target directory.
+type LocalAgentInfo struct {
+	Name       string
+	Path       string
+	TargetName string
 }
 
 // CheckAgentCollisions detects agents that flatten to the same filename.
@@ -320,26 +327,49 @@ func PruneOrphanAgentCopies(targetDir string, agents []resource.DiscoveredResour
 	return removed, nil
 }
 
-// CollectAgents copies non-symlinked .md files from targetDir back to agentSourceDir.
-// Returns the list of collected filenames.
-func CollectAgents(targetDir, agentSourceDir string, dryRun bool, out io.Writer) ([]string, error) {
-	entries, err := os.ReadDir(targetDir)
+// FindLocalAgents finds local (non-symlinked) agent files in a target directory.
+// If the target directory itself is a symlink to sourcePath, it returns no local agents.
+func FindLocalAgents(targetDir, sourcePath string) ([]LocalAgentInfo, error) {
+	var agents []LocalAgentInfo
+
+	info, err := os.Lstat(targetDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil
+			return agents, nil
 		}
 		return nil, fmt.Errorf("failed to read agent target directory: %w", err)
 	}
 
-	if out == nil {
-		out = DiagOutput
+	if info.Mode()&os.ModeSymlink != 0 {
+		absLink, err := utils.ResolveLinkTarget(targetDir)
+		if err != nil {
+			return nil, err
+		}
+		absSource, _ := filepath.Abs(sourcePath)
+		if utils.PathsEqual(absLink, absSource) {
+			return agents, nil
+		}
+		resolved, statErr := os.Stat(targetDir)
+		if statErr != nil || !resolved.IsDir() {
+			return agents, nil
+		}
 	}
 
-	var collected []string
+	entries, err := os.ReadDir(targetDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return agents, nil
+		}
+		return nil, fmt.Errorf("failed to read agent target directory: %w", err)
+	}
+
 	for _, entry := range entries {
 		name := entry.Name()
 
 		if !strings.HasSuffix(strings.ToLower(name), ".md") {
+			continue
+		}
+		if utils.IsHidden(name) || resource.ConventionalExcludes[name] {
 			continue
 		}
 
@@ -348,33 +378,73 @@ func CollectAgents(targetDir, agentSourceDir string, dryRun bool, out io.Writer)
 			continue
 		}
 
-		if info.Mode()&os.ModeSymlink != 0 {
+		if info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 			continue
 		}
 
-		if resource.ConventionalExcludes[name] {
-			continue
-		}
-
-		srcPath := filepath.Join(targetDir, name)
-		dstPath := filepath.Join(agentSourceDir, name)
-
-		if dryRun {
-			fmt.Fprintf(out, "[dry-run] Would collect agent: %s\n", name)
-		} else {
-			if err := os.MkdirAll(agentSourceDir, 0755); err != nil {
-				return nil, fmt.Errorf("failed to create agent source dir: %w", err)
-			}
-			data, err := os.ReadFile(srcPath)
-			if err != nil {
-				return nil, fmt.Errorf("failed to read %s: %w", name, err)
-			}
-			if err := os.WriteFile(dstPath, data, 0644); err != nil {
-				return nil, fmt.Errorf("failed to write %s: %w", name, err)
-			}
-		}
-		collected = append(collected, name)
+		agents = append(agents, LocalAgentInfo{
+			Name: name,
+			Path: filepath.Join(targetDir, name),
+		})
 	}
 
-	return collected, nil
+	return agents, nil
+}
+
+// PullAgent copies a single local agent file from target to source.
+func PullAgent(agent LocalAgentInfo, sourcePath string, force bool) error {
+	destPath := filepath.Join(sourcePath, agent.Name)
+
+	if _, err := os.Stat(destPath); err == nil {
+		if !force {
+			return ErrAlreadyExists
+		}
+		if err := os.RemoveAll(destPath); err != nil {
+			return fmt.Errorf("failed to remove existing: %w", err)
+		}
+	}
+
+	data, err := os.ReadFile(agent.Path)
+	if err != nil {
+		return fmt.Errorf("failed to read %s: %w", agent.Name, err)
+	}
+	if err := os.WriteFile(destPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write %s: %w", agent.Name, err)
+	}
+
+	return nil
+}
+
+// PullAgents copies multiple local agent files from targets to source.
+func PullAgents(agents []LocalAgentInfo, sourcePath string, opts PullOptions) (*PullResult, error) {
+	result := &PullResult{
+		Failed: make(map[string]error),
+	}
+
+	if !opts.DryRun {
+		if err := os.MkdirAll(sourcePath, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create agent source dir: %w", err)
+		}
+	}
+
+	for _, agent := range agents {
+		if opts.DryRun {
+			result.Pulled = append(result.Pulled, agent.Name)
+			continue
+		}
+
+		err := PullAgent(agent, sourcePath, opts.Force)
+		if err != nil {
+			if errors.Is(err, ErrAlreadyExists) {
+				result.Skipped = append(result.Skipped, agent.Name)
+			} else {
+				result.Failed[agent.Name] = err
+			}
+			continue
+		}
+
+		result.Pulled = append(result.Pulled, agent.Name)
+	}
+
+	return result, nil
 }
