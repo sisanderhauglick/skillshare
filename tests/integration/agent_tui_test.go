@@ -26,8 +26,8 @@ func TestList_Agents_KindFilter_NoTUI(t *testing.T) {
 	result.AssertAnyOutputContains(t, "tutor")
 	result.AssertOutputNotContains(t, "my-skill")
 
-	// list all --no-tui should show both
-	result = sb.RunCLI("list", "all", "--no-tui")
+	// list --all --no-tui should show both
+	result = sb.RunCLI("list", "--all", "--no-tui")
 	result.AssertSuccess(t)
 	result.AssertAnyOutputContains(t, "tutor")
 	result.AssertAnyOutputContains(t, "my-skill")

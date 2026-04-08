@@ -8,7 +8,7 @@ collect, uninstall, trash, update, backup, and doctor.
 ## Scope
 
 - Agent CRUD lifecycle (create source → sync → uninstall → trash → restore)
-- Kind filter: `agents`, `all`, default (skills-only)
+- Kind filter: `agents`, `--all`, default (skills-only)
 - JSON output for all commands that support it
 - Diff and collect workflows
 - Backup and restore round-trip
@@ -147,7 +147,7 @@ Expected:
 ### 8. Sync all — syncs both skills and agents
 
 ```bash
-ss sync all -g
+ss sync --all -g
 ```
 
 Expected:
@@ -178,7 +178,7 @@ Expected:
 ### 11. Status all — includes both skills and agents
 
 ```bash
-ss status all --json -g
+ss status --all --json -g
 ```
 
 Expected:
@@ -414,7 +414,7 @@ Expected:
 ### 29. List all — shows both skills and agents
 
 ```bash
-ss list all --json -g
+ss list --all --json -g
 ```
 
 Expected:

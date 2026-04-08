@@ -545,8 +545,8 @@ func cmdList(args []string) error {
 
 	applyModeLabel(mode)
 
-	// Extract kind filter (e.g. "skillshare list agents").
-	kind, rest := parseKindArg(rest)
+	// Extract kind filter (e.g. "skillshare list agents" or "--all").
+	kind, rest := parseKindArgWithAll(rest)
 
 	opts, err := parseListArgs(rest)
 	if opts.ShowHelp {
@@ -785,12 +785,13 @@ func abbreviateSource(source string) string {
 }
 
 func printListHelp() {
-	fmt.Println(`Usage: skillshare list [agents|all] [pattern] [options]
+	fmt.Println(`Usage: skillshare list [agents] [pattern] [options]
 
 List all installed skills in the source directory.
 An optional pattern filters skills by name, path, or source (case-insensitive).
 
 Options:
+  --all                  List both skills and agents
   --verbose, -v          Show detailed information (source, type, install date)
   --json, -j             Output as JSON (useful for CI/scripts)
   --no-tui               Disable interactive TUI, use plain text output
@@ -808,5 +809,5 @@ Examples:
   skillshare list --json | jq '.[].name'
   skillshare list --verbose
   skillshare list agents                       # List agents only
-  skillshare list all                          # List skills + agents`)
+  skillshare list --all                        # List skills + agents`)
 }

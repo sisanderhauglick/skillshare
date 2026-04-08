@@ -174,8 +174,8 @@ func cmdCheck(args []string) error {
 
 	applyModeLabel(mode)
 
-	// Extract kind filter (e.g. "skillshare check agents") before arg parsing.
-	kind, rest := parseKindArg(rest)
+	// Extract kind filter (e.g. "skillshare check agents" or "--all").
+	kind, rest := parseKindArgWithAll(rest)
 
 	scope := "global"
 	if mode == modeProject {
@@ -961,7 +961,7 @@ func renderAgentCheck(agentsDir string, groups []string, jsonMode bool) {
 }
 
 func printCheckHelp() {
-	fmt.Println(`Usage: skillshare check [name...] [options]
+	fmt.Println(`Usage: skillshare check [agents] [name...] [options]
        skillshare check --group <group> [options]
 
 Check for available updates to tracked repositories and installed skills.
@@ -976,11 +976,12 @@ Arguments:
   name...                Skill name(s) or tracked repo name(s) (optional)
 
 Options:
-  --group, -G <name>  Check all updatable skills in a group (repeatable)
-  --project, -p       Check project-level skills (.skillshare/)
-  --global, -g        Check global skills (~/.config/skillshare)
-  --json              Output results as JSON
-  --help, -h          Show this help
+  --all              Check both skills and agents
+  --group, -G <name> Check all updatable skills in a group (repeatable)
+  --project, -p      Check project-level skills (.skillshare/)
+  --global, -g       Check global skills (~/.config/skillshare)
+  --json             Output results as JSON
+  --help, -h         Show this help
 
 Examples:
   skillshare check                     # Check all items
@@ -991,5 +992,6 @@ Examples:
   skillshare check --json              # Output as JSON (for CI)
   skillshare check -p                  # Check project skills
   skillshare check agents              # Check all agents
-  skillshare check agents -G demo      # Check agents in demo/`)
+  skillshare check agents -G demo      # Check agents in demo/
+  skillshare check --all               # Check skills + agents`)
 }

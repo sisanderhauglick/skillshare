@@ -130,8 +130,8 @@ func cmdAudit(args []string) error {
 	}
 	applyModeLabel(mode)
 
-	// Extract kind filter (e.g. "skillshare audit agents") before subcommand check.
-	kind, rest := parseKindArg(rest)
+	// Extract kind filter (e.g. "skillshare audit agents" or "--all").
+	kind, rest := parseKindArgWithAll(rest)
 
 	// Check for "rules" subcommand before standard audit arg parsing.
 	if len(rest) > 0 && rest[0] == "rules" {

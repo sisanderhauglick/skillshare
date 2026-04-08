@@ -384,7 +384,7 @@ func formatCategoryBreakdownTUI(cats map[string]int) string {
 }
 
 func printAuditHelp() {
-	fmt.Println(`Usage: skillshare audit [name...] [options]
+	fmt.Println(`Usage: skillshare audit [agents] [name...] [options]
        skillshare audit --group <group> [options]
        skillshare audit <path> [options]
 
@@ -398,6 +398,7 @@ Arguments:
   path                 Existing file/directory path to scan (optional)
 
 Options:
+  --all                Scan both skills and agents
   --group, -G <name>   Scan all skills in a group (repeatable)
   -p, --project        Use project-level skills
   -g, --global         Use global skills
@@ -432,5 +433,7 @@ Examples:
   skillshare audit --format sarif            # Output SARIF 2.1.0 for GitHub Code Scanning
   skillshare audit --format markdown         # Output Markdown report (for GitHub Issues/PRs)
   skillshare audit --json                    # Same as --format json (deprecated)
-  skillshare audit -p --init-rules           # Create project custom rules file`)
+  skillshare audit -p --init-rules           # Create project custom rules file
+  skillshare audit agents                    # Scan agents only
+  skillshare audit --all                     # Scan skills + agents`)
 }

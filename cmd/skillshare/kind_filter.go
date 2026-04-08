@@ -13,9 +13,9 @@ const (
 
 // parseKindArg extracts a kind filter from the first positional argument.
 // Returns the filter and remaining args.
-// Recognized values: "skills", "skill", "agents", "agent", "all".
+// Recognized values: "skills", "skill", "agents", "agent".
 // If the first arg is not a kind keyword, returns kindSkills with args unchanged
-// (default is skills-only; explicit "all" required for both).
+// (default is skills-only; use --all flag for both).
 func parseKindArg(args []string) (resourceKindFilter, []string) {
 	if len(args) == 0 {
 		return kindSkills, args
@@ -26,11 +26,36 @@ func parseKindArg(args []string) (resourceKindFilter, []string) {
 		return kindSkills, args[1:]
 	case "agents", "agent":
 		return kindAgents, args[1:]
-	case "all":
-		return kindAll, args[1:]
 	default:
 		return kindSkills, args
 	}
+}
+
+// extractAllFlag scans args for --all, removes it, and returns true if found.
+// Commands use this to let --all mean kindAll (skills + agents).
+func extractAllFlag(args []string) (bool, []string) {
+	found := false
+	rest := make([]string, 0, len(args))
+	for _, a := range args {
+		if a == "--all" {
+			found = true
+		} else {
+			rest = append(rest, a)
+		}
+	}
+	return found, rest
+}
+
+// parseKindArgWithAll combines parseKindArg and extractAllFlag.
+// It parses the positional kind keyword (agents/skills) and the --all flag.
+// Used by commands where --all means kindAll (skills + agents).
+func parseKindArgWithAll(args []string) (resourceKindFilter, []string) {
+	kind, rest := parseKindArg(args)
+	if allKinds, remaining := extractAllFlag(rest); allKinds {
+		kind = kindAll
+		rest = remaining
+	}
+	return kind, rest
 }
 
 // parseKindFlag extracts --kind flag from args.

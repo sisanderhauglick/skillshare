@@ -164,7 +164,7 @@ targets:
 	installResult.AssertSuccess(t)
 
 	// Sync all (skills + agents)
-	syncResult := sb.RunCLI("sync", "all")
+	syncResult := sb.RunCLI("sync", "--all")
 	syncResult.AssertSuccess(t)
 
 	// Skill in claude skills target

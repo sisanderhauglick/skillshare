@@ -82,7 +82,7 @@ func TestStatusProject_All(t *testing.T) {
 
 	projectDir := setupProjectWithAgents(t, sb)
 
-	result := sb.RunCLIInDir(projectDir, "status", "-p", "all")
+	result := sb.RunCLIInDir(projectDir, "status", "-p", "--all")
 	result.AssertSuccess(t)
 	result.AssertAnyOutputContains(t, "Source") // skill section
 	result.AssertAnyOutputContains(t, "Agents") // agent section
@@ -245,12 +245,12 @@ func TestSyncProject_All_NestedAgentsSameBasename_FlattensAndStaysStable(t *test
 
 	sb.WriteConfig(`source: ` + sb.SourcePath + "\ntargets: {}\n")
 
-	first := sb.RunCLIInDir(projectDir, "sync", "-p", "all")
+	first := sb.RunCLIInDir(projectDir, "sync", "-p", "--all")
 	first.AssertSuccess(t)
 	first.AssertAnyOutputContains(t, "Agent sync complete")
 	first.AssertAnyOutputContains(t, "0 updated")
 
-	second := sb.RunCLIInDir(projectDir, "sync", "-p", "all")
+	second := sb.RunCLIInDir(projectDir, "sync", "-p", "--all")
 	second.AssertSuccess(t)
 	second.AssertAnyOutputContains(t, "Agent sync complete")
 	second.AssertAnyOutputContains(t, "0 updated")

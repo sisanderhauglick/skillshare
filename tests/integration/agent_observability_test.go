@@ -83,7 +83,7 @@ func TestStatus_All_ShowsBoth(t *testing.T) {
 	})
 	sb.WriteConfig(`source: ` + sb.SourcePath + "\ntargets: {}\n")
 
-	result := sb.RunCLI("status", "all")
+	result := sb.RunCLI("status", "--all")
 	result.AssertSuccess(t)
 	result.AssertAnyOutputContains(t, "Source") // skill section
 	result.AssertAnyOutputContains(t, "Agents") // agent section

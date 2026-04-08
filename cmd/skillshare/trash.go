@@ -34,8 +34,8 @@ func cmdTrash(args []string) error {
 
 	applyModeLabel(mode)
 
-	// Extract kind filter (e.g. "skillshare trash agents list").
-	kind, rest := parseKindArg(rest)
+	// Extract kind filter (e.g. "skillshare trash agents list" or "--all").
+	kind, rest := parseKindArgWithAll(rest)
 
 	if len(rest) == 0 {
 		printTrashHelp()
@@ -360,6 +360,7 @@ Commands:
   empty                 Permanently delete all items from trash
 
 Options:
+  --all                 Include both skills and agents
   --no-tui              Disable interactive TUI, use plain text output
   --project, -p         Use project-level trash
   --global, -g          Use global trash
@@ -373,5 +374,6 @@ Examples:
   skillshare trash delete my-skill         # Permanently delete from trash
   skillshare trash empty                   # Empty the trash
   skillshare trash agents list             # List trashed agents
-  skillshare trash agents restore tutor    # Restore an agent from trash`)
+  skillshare trash agents restore tutor    # Restore an agent from trash
+  skillshare trash --all list              # List trashed skills + agents`)
 }

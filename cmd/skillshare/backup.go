@@ -23,11 +23,11 @@ func cmdBackup(args []string) error {
 		return err
 	}
 
-	// Extract kind filter (e.g. "skillshare backup agents").
-	kind, args := parseKindArg(args)
+	// Extract kind filter (e.g. "skillshare backup agents" or "--all").
+	kind, args := parseKindArgWithAll(args)
 
 	// Project mode is only supported for agents.
-	if mode == modeProject && kind != kindAgents {
+	if mode == modeProject && kind != kindAgents && kind != kindAll {
 		return fmt.Errorf("backup is not supported in project mode (except for agents)")
 	}
 
@@ -340,10 +340,11 @@ func cmdRestore(args []string) error {
 	}
 
 	// Extract kind filter (e.g. "skillshare restore agents").
-	kind, args := parseKindArg(args)
+	// Extract kind filter (e.g. "skillshare restore agents" or "--all").
+	kind, args := parseKindArgWithAll(args)
 
 	// Project mode is only supported for agents.
-	if mode == modeProject && kind != kindAgents {
+	if mode == modeProject && kind != kindAgents && kind != kindAll {
 		return fmt.Errorf("restore is not supported in project mode (except for agents)")
 	}
 
@@ -620,6 +621,7 @@ Arguments:
   target               Target name to backup (optional; backs up all if omitted)
 
 Options:
+  --all                Backup both skills and agents
   --project, -p        Use project mode (.skillshare/backups/); agents only
   --global, -g         Use global mode (default for skills)
   --list, -l           List all existing backups
@@ -635,7 +637,8 @@ Examples:
   skillshare backup --cleanup               # Remove old backups
   skillshare backup --cleanup --dry-run     # Preview cleanup
   skillshare backup agents                  # Backup all agent targets
-  skillshare backup agents -p               # Backup project agent targets`)
+  skillshare backup agents -p               # Backup project agent targets
+  skillshare backup --all                   # Backup skills + agents`)
 }
 
 func printRestoreHelp() {
@@ -648,6 +651,7 @@ Arguments:
   target               Target name to restore (optional)
 
 Options:
+  --all                Restore both skills and agents
   --project, -p        Use project mode (.skillshare/backups/); agents only
   --global, -g         Use global mode (default for skills)
   --from, -f <ts>      Restore from specific timestamp (e.g. 2024-01-15_14-30-45)
@@ -663,5 +667,6 @@ Examples:
   skillshare restore claude --dry-run       # Preview restore
   skillshare restore --no-tui               # List backups (no TUI)
   skillshare restore agents claude          # Restore agents claude target
-  skillshare restore agents claude -p       # Restore project agents`)
+  skillshare restore agents claude -p       # Restore project agents
+  skillshare restore --all claude           # Restore skills + agents`)
 }

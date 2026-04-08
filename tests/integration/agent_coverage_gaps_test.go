@@ -104,10 +104,10 @@ func TestCheck_All_CombinedOutput(t *testing.T) {
 	})
 	sb.WriteConfig(`source: ` + sb.SourcePath + "\ntargets: {}\n")
 
-	// "check all" should show both skills and agents
+	// "check --all" should show both skills and agents
 	// Currently "check" defaults to skills-only, "check agents" is agents-only
-	// "check all" should combine both
-	result := sb.RunCLI("check", "all")
+	// "check --all" should combine both
+	result := sb.RunCLI("check", "--all")
 	result.AssertSuccess(t)
 }
 
@@ -158,8 +158,8 @@ func TestList_Agents_JSON_AllEntriesHaveKind(t *testing.T) {
 	})
 	sb.WriteConfig(`source: ` + sb.SourcePath + "\ntargets: {}\n")
 
-	// "list all --json" should have kind on every entry
-	result := sb.RunCLI("list", "all", "--json")
+	// "list --all --json" should have kind on every entry
+	result := sb.RunCLI("list", "--all", "--json")
 	result.AssertSuccess(t)
 	result.AssertAnyOutputContains(t, `"kind": "skill"`)
 	result.AssertAnyOutputContains(t, `"kind": "agent"`)

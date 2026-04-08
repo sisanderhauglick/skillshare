@@ -91,8 +91,8 @@ func cmdStatus(args []string) error {
 
 	applyModeLabel(mode)
 
-	// Extract kind filter (e.g. "skillshare status agents").
-	kind, rest := parseKindArg(rest)
+	// Extract kind filter (e.g. "skillshare status agents" or "--all").
+	kind, rest := parseKindArgWithAll(rest)
 
 	jsonOutput := hasFlag(rest, "--json")
 
@@ -531,11 +531,12 @@ func checkSkillVersion(cfg *config.Config) {
 }
 
 func printStatusHelp() {
-	fmt.Println(`Usage: skillshare status [agents|all] [options]
+	fmt.Println(`Usage: skillshare status [agents] [options]
 
 Show status of source, skills, and all targets.
 
 Options:
+  --all             Show both skills and agents
   --json            Output results as JSON
   --project, -p     Use project-level config
   --global, -g      Use global config
@@ -546,5 +547,5 @@ Examples:
   skillshare status --json       Output as JSON
   skillshare status -p           Show project status
   skillshare status agents       Show agents status only
-  skillshare status all          Show skills + agents status`)
+  skillshare status --all        Show both skills and agents`)
 }

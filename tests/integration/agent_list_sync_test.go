@@ -109,7 +109,7 @@ func TestList_All_MixedOutput(t *testing.T) {
 	})
 	sb.WriteConfig(`source: ` + sb.SourcePath + "\ntargets: {}\n")
 
-	result := sb.RunCLI("list", "all", "--json")
+	result := sb.RunCLI("list", "--all", "--json")
 	result.AssertSuccess(t)
 	result.AssertAnyOutputContains(t, `"skill"`)
 	result.AssertAnyOutputContains(t, `"agent"`)
@@ -255,7 +255,7 @@ targets:
       path: ` + claudeAgents + `
 `)
 
-	result := sb.RunCLI("sync", "all")
+	result := sb.RunCLI("sync", "--all")
 	result.AssertSuccess(t)
 	result.AssertAnyOutputContains(t, "Syncing skills")
 	result.AssertAnyOutputContains(t, "Syncing agents")
@@ -269,9 +269,9 @@ targets:
 	}
 }
 
-// --- parseKindArg "all" keyword ---
+// --- --all flag ---
 
-func TestSync_All_PositionalKeyword(t *testing.T) {
+func TestSync_All_Flag(t *testing.T) {
 	sb := testutil.NewSandbox(t)
 	defer sb.Cleanup()
 
@@ -287,8 +287,8 @@ targets:
       path: ` + claudeSkills + `
 `)
 
-	// "sync all" should still sync skills even without agents configured
-	result := sb.RunCLI("sync", "all")
+	// "sync --all" should still sync skills even without agents configured
+	result := sb.RunCLI("sync", "--all")
 	result.AssertSuccess(t)
 	result.AssertAnyOutputContains(t, "Syncing skills")
 }
