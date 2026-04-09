@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"maps"
 	"net/http"
-	"os"
-	"strings"
 	"time"
 
 	"skillshare/internal/config"
@@ -51,11 +49,12 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	defer s.mu.Unlock()
 
 	var body struct {
-		DryRun bool `json:"dryRun"`
-		Force  bool `json:"force"`
+		DryRun bool   `json:"dryRun"`
+		Force  bool   `json:"force"`
+		Kind   string `json:"kind"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		// Default to non-dry-run, non-force
+		// Default to non-dry-run, non-force, empty kind (both)
 	}
 
 	globalMode := s.cfg.Mode
@@ -70,97 +69,186 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Discover skills once for all targets
-	allSkills, ignoreStats, err := ssync.DiscoverSourceSkillsWithStats(s.cfg.Source)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to discover skills: "+err.Error())
-		return
-	}
-
-	if len(allSkills) == 0 {
-		warnings = append(warnings, "source directory is empty (0 skills)")
-	}
-
-	// Registry entries are managed by install/uninstall, not sync.
-	// Sync only manages symlinks — it must not prune registry entries
-	// for installed skills whose files may be missing from disk.
-
 	results := make([]syncTargetResult, 0)
 
-	for name, target := range s.cfg.Targets {
-		sc := target.SkillsConfig()
-		mode := sc.Mode
-		if mode == "" {
-			mode = globalMode
+	var ignoreStats *skillignore.IgnoreStats
+
+	// Skill sync (skip when kind == "agent")
+	if body.Kind != "agent" {
+		var allSkills []ssync.DiscoveredSkill
+		var err error
+		allSkills, ignoreStats, err = ssync.DiscoverSourceSkillsWithStats(s.cfg.Source)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to discover skills: "+err.Error())
+			return
 		}
 
-		res := syncTargetResult{
-			Target:  name,
-			Linked:  make([]string, 0),
-			Updated: make([]string, 0),
-			Skipped: make([]string, 0),
-			Pruned:  make([]string, 0),
+		if len(allSkills) == 0 {
+			warnings = append(warnings, "source directory is empty (0 skills)")
 		}
 
-		syncErrArgs := map[string]any{
-			"targets_total":  len(s.cfg.Targets),
-			"targets_failed": 1,
-			"target":         name,
-			"dry_run":        body.DryRun,
-			"force":          body.Force,
-			"scope":          "ui",
+		// Registry entries are managed by install/uninstall, not sync.
+		// Sync only manages symlinks — it must not prune registry entries
+		// for installed skills whose files may be missing from disk.
+
+		for name, target := range s.cfg.Targets {
+			sc := target.SkillsConfig()
+			mode := sc.Mode
+			if mode == "" {
+				mode = globalMode
+			}
+
+			res := syncTargetResult{
+				Target:  name,
+				Linked:  make([]string, 0),
+				Updated: make([]string, 0),
+				Skipped: make([]string, 0),
+				Pruned:  make([]string, 0),
+			}
+
+			syncErrArgs := map[string]any{
+				"targets_total":  len(s.cfg.Targets),
+				"targets_failed": 1,
+				"target":         name,
+				"dry_run":        body.DryRun,
+				"force":          body.Force,
+				"scope":          "ui",
+			}
+
+			switch mode {
+			case "merge":
+				mergeResult, err := ssync.SyncTargetMergeWithSkills(name, target, allSkills, s.cfg.Source, body.DryRun, body.Force, s.projectRoot)
+				if err != nil {
+					s.writeOpsLog("sync", "error", start, syncErrArgs, err.Error())
+					writeError(w, http.StatusInternalServerError, "sync failed for "+name+": "+err.Error())
+					return
+				}
+				res.Linked = mergeResult.Linked
+				res.Updated = mergeResult.Updated
+				res.Skipped = mergeResult.Skipped
+				res.DirCreated = mergeResult.DirCreated
+
+				pruneResult, err := ssync.PruneOrphanLinksWithSkills(ssync.PruneOptions{
+					TargetPath: sc.Path, SourcePath: s.cfg.Source, Skills: allSkills,
+					Include: sc.Include, Exclude: sc.Exclude, TargetNaming: sc.TargetNaming, TargetName: name,
+					DryRun: body.DryRun, Force: body.Force,
+				})
+				if err == nil {
+					res.Pruned = pruneResult.Removed
+				}
+
+			case "copy":
+				copyResult, err := ssync.SyncTargetCopyWithSkills(name, target, allSkills, s.cfg.Source, body.DryRun, body.Force, nil)
+				if err != nil {
+					s.writeOpsLog("sync", "error", start, syncErrArgs, err.Error())
+					writeError(w, http.StatusInternalServerError, "sync failed for "+name+": "+err.Error())
+					return
+				}
+				res.Linked = copyResult.Copied
+				res.Updated = copyResult.Updated
+				res.Skipped = copyResult.Skipped
+				res.DirCreated = copyResult.DirCreated
+
+				pruneResult, err := ssync.PruneOrphanCopiesWithSkills(sc.Path, allSkills, sc.Include, sc.Exclude, name, sc.TargetNaming, body.DryRun)
+				if err == nil {
+					res.Pruned = pruneResult.Removed
+				}
+
+			default:
+				err := ssync.SyncTarget(name, target, s.cfg.Source, body.DryRun, s.projectRoot)
+				if err != nil {
+					s.writeOpsLog("sync", "error", start, syncErrArgs, err.Error())
+					writeError(w, http.StatusInternalServerError, "sync failed for "+name+": "+err.Error())
+					return
+				}
+				res.Linked = []string{"(symlink mode)"}
+			}
+
+			results = append(results, res)
 		}
+	}
 
-		switch mode {
-		case "merge":
-			mergeResult, err := ssync.SyncTargetMergeWithSkills(name, target, allSkills, s.cfg.Source, body.DryRun, body.Force, s.projectRoot)
-			if err != nil {
-				s.writeOpsLog("sync", "error", start, syncErrArgs, err.Error())
-				writeError(w, http.StatusInternalServerError, "sync failed for "+name+": "+err.Error())
-				return
-			}
-			res.Linked = mergeResult.Linked
-			res.Updated = mergeResult.Updated
-			res.Skipped = mergeResult.Skipped
-			res.DirCreated = mergeResult.DirCreated
+	// Agent sync (skip when kind == "skill")
+	if body.Kind != "skill" {
+		agentsSource := s.agentsSource()
+		if agentsSource != "" {
+			agentDiscovered, _ := resource.AgentKind{}.Discover(agentsSource)
+			agents := resource.ActiveAgents(agentDiscovered)
 
-			pruneResult, err := ssync.PruneOrphanLinksWithSkills(ssync.PruneOptions{
-				TargetPath: sc.Path, SourcePath: s.cfg.Source, Skills: allSkills,
-				Include: sc.Include, Exclude: sc.Exclude, TargetNaming: sc.TargetNaming, TargetName: name,
-				DryRun: body.DryRun, Force: body.Force,
-			})
-			if err == nil {
-				res.Pruned = pruneResult.Removed
-			}
+			if len(agents) > 0 {
+				var builtinAgents map[string]config.TargetConfig
+				if s.IsProjectMode() {
+					builtinAgents = config.ProjectAgentTargets()
+				} else {
+					builtinAgents = config.DefaultAgentTargets()
+				}
 
-		case "copy":
-			copyResult, err := ssync.SyncTargetCopyWithSkills(name, target, allSkills, s.cfg.Source, body.DryRun, body.Force, nil)
-			if err != nil {
-				s.writeOpsLog("sync", "error", start, syncErrArgs, err.Error())
-				writeError(w, http.StatusInternalServerError, "sync failed for "+name+": "+err.Error())
-				return
-			}
-			res.Linked = copyResult.Copied
-			res.Updated = copyResult.Updated
-			res.Skipped = copyResult.Skipped
-			res.DirCreated = copyResult.DirCreated
+				for name, target := range s.cfg.Targets {
+					ac := target.AgentsConfig()
+					agentPath := ac.Path
+					if agentPath == "" {
+						if builtin, ok := builtinAgents[name]; ok {
+							agentPath = builtin.Path
+						}
+					}
+					if agentPath == "" {
+						continue
+					}
+					agentPath = config.ExpandPath(agentPath)
 
-			pruneResult, err := ssync.PruneOrphanCopiesWithSkills(sc.Path, allSkills, sc.Include, sc.Exclude, name, sc.TargetNaming, body.DryRun)
-			if err == nil {
-				res.Pruned = pruneResult.Removed
-			}
+					agentMode := ac.Mode
+					if agentMode == "" {
+						agentMode = "merge"
+					}
 
-		default:
-			err := ssync.SyncTarget(name, target, s.cfg.Source, body.DryRun, s.projectRoot)
-			if err != nil {
-				s.writeOpsLog("sync", "error", start, syncErrArgs, err.Error())
-				writeError(w, http.StatusInternalServerError, "sync failed for "+name+": "+err.Error())
-				return
+					agentResult, err := ssync.SyncAgents(agents, agentsSource, agentPath, agentMode, body.DryRun, body.Force)
+					if err != nil {
+						warnings = append(warnings, "agent sync failed for "+name+": "+err.Error())
+						continue
+					}
+
+					// Merge into existing result or create new
+					merged := false
+					for i := range results {
+						if results[i].Target == name {
+							results[i].Linked = append(results[i].Linked, agentResult.Linked...)
+							results[i].Updated = append(results[i].Updated, agentResult.Updated...)
+							results[i].Skipped = append(results[i].Skipped, agentResult.Skipped...)
+							merged = true
+							break
+						}
+					}
+					if !merged && (len(agentResult.Linked) > 0 || len(agentResult.Updated) > 0 || len(agentResult.Skipped) > 0) {
+						results = append(results, syncTargetResult{
+							Target:  name,
+							Linked:  agentResult.Linked,
+							Updated: agentResult.Updated,
+							Skipped: agentResult.Skipped,
+							Pruned:  make([]string, 0),
+						})
+					}
+
+					// Prune orphan agents
+					if agentMode == "merge" {
+						pruned, _ := ssync.PruneOrphanAgentLinks(agentPath, agents, body.DryRun)
+						for i := range results {
+							if results[i].Target == name {
+								results[i].Pruned = append(results[i].Pruned, pruned...)
+								break
+							}
+						}
+					} else if agentMode == "copy" {
+						pruned, _ := ssync.PruneOrphanAgentCopies(agentPath, agents, body.DryRun)
+						for i := range results {
+							if results[i].Target == name {
+								results[i].Pruned = append(results[i].Pruned, pruned...)
+								break
+							}
+						}
+					}
+				}
 			}
-			res.Linked = []string{"(symlink mode)"}
 		}
-
-		results = append(results, res)
 	}
 
 	// Log the sync operation
@@ -169,22 +257,9 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		"targets_failed": 0,
 		"dry_run":        body.DryRun,
 		"force":          body.Force,
+		"kind":           body.Kind,
 		"scope":          "ui",
 	}, "")
-
-	// Check if agents exist in source but no configured target supports them
-	agentsDir := s.agentsSource()
-	if agentsDir != "" && !s.cfg.HasAgentTarget() {
-		if entries, err := os.ReadDir(agentsDir); err == nil {
-			for _, e := range entries {
-				if !e.IsDir() && strings.HasSuffix(strings.ToLower(e.Name()), ".md") &&
-					!strings.HasSuffix(strings.ToLower(e.Name()), ".skillshare-meta.json") {
-					warnings = append(warnings, "Agents exist in source but none of your configured targets support agents. Agent files will not be synced.")
-					break
-				}
-			}
-		}
-	}
 
 	resp := map[string]any{
 		"results":  results,
