@@ -18,11 +18,30 @@ func (AgentKind) Kind() string { return "agent" }
 
 // Discover scans sourceDir for .md files, excluding conventional files
 // (README.md, LICENSE.md, etc.) and hidden files.
+//
+// For tracked repos (directories starting with _): if the repo contains an
+// agents/ subdirectory, only files inside agents/ are discovered. Otherwise
+// the entire repo is walked with conventional excludes applied.
 func (AgentKind) Discover(sourceDir string) ([]DiscoveredResource, error) {
 	walkRoot := utils.ResolveSymlink(sourceDir)
 
 	// Read .agentignore for filtering
 	ignoreMatcher := skillignore.ReadAgentIgnoreMatcher(walkRoot)
+
+	// Pre-scan: find tracked repos that have an agents/ subdirectory.
+	// When agents/ exists, only its contents count as agent files.
+	reposWithAgentsDir := map[string]bool{}
+	if entries, readErr := os.ReadDir(walkRoot); readErr == nil {
+		for _, e := range entries {
+			if !e.IsDir() || !utils.IsTrackedRepoDir(e.Name()) {
+				continue
+			}
+			agentsPath := filepath.Join(walkRoot, e.Name(), "agents")
+			if info, statErr := os.Stat(agentsPath); statErr == nil && info.IsDir() {
+				reposWithAgentsDir[e.Name()] = true
+			}
+		}
+	}
 
 	var resources []DiscoveredResource
 
@@ -43,6 +62,14 @@ func (AgentKind) Discover(sourceDir string) ([]DiscoveredResource, error) {
 					if ignoreMatcher.CanSkipDir(relDir) {
 						return filepath.SkipDir
 					}
+				}
+			}
+			// For tracked repos with agents/ subdir: skip non-agents children
+			relDir, relErr := filepath.Rel(walkRoot, path)
+			if relErr == nil {
+				parts := strings.SplitN(filepath.ToSlash(relDir), "/", 3)
+				if len(parts) >= 2 && reposWithAgentsDir[parts[0]] && parts[1] != "agents" {
+					return filepath.SkipDir
 				}
 			}
 			return nil
@@ -68,6 +95,13 @@ func (AgentKind) Discover(sourceDir string) ([]DiscoveredResource, error) {
 			return nil
 		}
 		relPath = strings.ReplaceAll(relPath, "\\", "/")
+
+		// For tracked repos with agents/ subdir: skip files at repo root level
+		// (e.g. _repo/CLAUDE.md) — only _repo/agents/** should be discovered.
+		parts := strings.SplitN(relPath, "/", 3)
+		if len(parts) == 2 && reposWithAgentsDir[parts[0]] {
+			return nil
+		}
 
 		// Apply .agentignore matching — mark as disabled but still include
 		disabled := ignoreMatcher.HasRules() && ignoreMatcher.Match(relPath, false)

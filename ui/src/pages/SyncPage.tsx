@@ -36,6 +36,9 @@ function extractIgnoreSources(data: IgnoreSources): IgnoreSources {
     ignored_skills: data.ignored_skills ?? [],
     ignore_root: data.ignore_root ?? '',
     ignore_repos: data.ignore_repos ?? [],
+    agent_ignore_root: data.agent_ignore_root ?? '',
+    agent_ignored_count: data.agent_ignored_count ?? 0,
+    agent_ignored_skills: data.agent_ignored_skills ?? [],
   };
 }
 
@@ -119,8 +122,10 @@ export default function SyncPage() {
     }
   };
 
-  // Derived ignored skills list
+  // Derived ignored skills/agents list
   const ignoredSkills = ignoreSources?.ignored_skills ?? [];
+  const ignoredAgents = ignoreSources?.agent_ignored_skills ?? [];
+  const allIgnored = [...ignoredSkills, ...ignoredAgents];
 
   // Calculate diff summary by kind (single pass)
   const diffs = diffData ?? [];
@@ -335,8 +340,8 @@ export default function SyncPage() {
         </div>
       )}
 
-      {/* Ignored skills collapsible card */}
-      {ignoredSkills.length > 0 && (
+      {/* Ignored skills/agents collapsible card */}
+      {allIgnored.length > 0 && (
         <Card>
           <button
             onClick={() => setIgnoredExpanded((prev) => !prev)}
@@ -349,21 +354,22 @@ export default function SyncPage() {
             )}
             <EyeOff size={16} strokeWidth={2.5} className="text-pencil-light shrink-0" />
             <span className="font-medium text-pencil-light text-left flex-1">
-              Ignored by .skillignore
+              Ignored by .skillignore / .agentignore
             </span>
-            <Badge variant="default">{ignoredSkills.length} skill{ignoredSkills.length !== 1 && 's'}</Badge>
+            <Badge variant="default">{allIgnored.length} resource{allIgnored.length !== 1 && 's'}</Badge>
           </button>
 
           {ignoredExpanded && (() => {
             const hasRoot = !!ignoreSources?.ignore_root;
             const repoCount = ignoreSources?.ignore_repos?.length ?? 0;
+            const hasAgentRoot = !!ignoreSources?.agent_ignore_root;
             return (
               <div className="mt-3 pl-8 space-y-1.5 animate-fade-in">
-                {ignoredSkills.map((skill) => (
-                  <div key={skill} className="flex items-center gap-2 text-base py-0.5">
+                {allIgnored.map((name) => (
+                  <div key={name} className="flex items-center gap-2 text-base py-0.5">
                     <EyeOff size={12} className="text-pencil-light/50 shrink-0" />
                     <span className="font-mono text-pencil-light text-sm truncate">
-                      {skill}
+                      {name}
                     </span>
                   </div>
                 ))}
@@ -380,7 +386,13 @@ export default function SyncPage() {
                       <span>{repoCount} repo-level .skillignore {repoCount === 1 ? 'file' : 'files'} active</span>
                     </div>
                   )}
-                  {!hasRoot && repoCount === 0 && (
+                  {hasAgentRoot && (
+                    <div className="flex items-center gap-1.5 text-xs text-pencil-light">
+                      <Info size={12} className="shrink-0" />
+                      <span>Root .agentignore active — edit in Config page</span>
+                    </div>
+                  )}
+                  {!hasRoot && repoCount === 0 && !hasAgentRoot && (
                     <div className="flex items-center gap-1.5 text-xs text-pencil-light">
                       <Info size={12} className="shrink-0" />
                       <span>Edit .skillignore in Config to manage exclusions</span>

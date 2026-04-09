@@ -186,19 +186,21 @@ export default function SearchPage() {
         if (matched.length > 0) {
           const res = await api.installBatch({ source, skills: matched });
           let hasAuditBlock = false;
+          const batchErrors: string[] = [];
           for (const item of res.results) {
             if (item.error) {
               if (item.error.includes('security audit failed')) {
                 hasAuditBlock = true;
-                toast(`${item.name}: blocked by security audit`, 'error');
+                batchErrors.push(`${item.name.replace(/__/g, '/')}: blocked by security audit`);
               } else {
-                toast(`${item.name}: ${item.error}`, 'error');
+                batchErrors.push(`${item.name.replace(/__/g, '/')}: ${item.error}`);
               }
             }
             if (item.warnings?.length) {
-              item.warnings.forEach((w) => toast(`${item.name}: ${w}`, 'warning'));
+              item.warnings.forEach((w) => toast(`${item.name.replace(/__/g, '/')}: ${w}`, 'warning'));
             }
           }
+          if (batchErrors.length > 0) toast(`${batchErrors.length} failed: ${batchErrors.join('; ')}`, 'error');
           toast(res.summary, hasAuditBlock ? 'warning' : 'success');
           clearAuditCache(queryClient);
           queryClient.invalidateQueries({ queryKey: queryKeys.skills.all });
@@ -214,19 +216,21 @@ export default function SearchPage() {
       } else if (disc.skills.length === 1) {
         const res = await api.installBatch({ source, skills: disc.skills });
         let hasAuditBlock = false;
+        const batchErrors: string[] = [];
         for (const item of res.results) {
           if (item.error) {
             if (item.error.includes('security audit failed')) {
               hasAuditBlock = true;
-              toast(`${item.name}: blocked by security audit`, 'error');
+              batchErrors.push(`${item.name.replace(/__/g, '/')}: blocked by security audit`);
             } else {
-              toast(`${item.name}: ${item.error}`, 'error');
+              batchErrors.push(`${item.name.replace(/__/g, '/')}: ${item.error}`);
             }
           }
           if (item.warnings?.length) {
-            item.warnings.forEach((w) => toast(`${item.name}: ${w}`, 'warning'));
+            item.warnings.forEach((w) => toast(`${item.name.replace(/__/g, '/')}: ${w}`, 'warning'));
           }
         }
+        if (batchErrors.length > 0) toast(`${batchErrors.length} failed: ${batchErrors.join('; ')}`, 'error');
         toast(res.summary, hasAuditBlock ? 'warning' : 'success');
         clearAuditCache(queryClient);
         queryClient.invalidateQueries({ queryKey: queryKeys.skills.all });
@@ -259,19 +263,21 @@ export default function SearchPage() {
         skills: selected,
       });
       let hasAuditBlock = false;
+      const batchErrors: string[] = [];
       for (const item of res.results) {
         if (item.error) {
           if (item.error.includes('security audit failed')) {
             hasAuditBlock = true;
-            toast(`${item.name}: blocked by security audit — use Force to override`, 'error');
+            batchErrors.push(`${item.name.replace(/__/g, '/')}: blocked by security audit — use Force to override`);
           } else {
-            toast(`${item.name}: ${item.error}`, 'error');
+            batchErrors.push(`${item.name.replace(/__/g, '/')}: ${item.error}`);
           }
         }
         if (item.warnings?.length) {
-          item.warnings.forEach((w) => toast(`${item.name}: ${w}`, 'warning'));
+          item.warnings.forEach((w) => toast(`${item.name.replace(/__/g, '/')}: ${w}`, 'warning'));
         }
       }
+      if (batchErrors.length > 0) toast(`${batchErrors.length} failed: ${batchErrors.join('; ')}`, 'error');
       toast(res.summary, hasAuditBlock ? 'warning' : 'success');
       setShowPicker(false);
       clearAuditCache(queryClient);

@@ -150,7 +150,8 @@ function useResourceActions() {
       return { previous };
     },
     onSuccess: (_, { name, kind, disable }) => {
-      toast(`${resourceLabel(kind, true)} ${name} ${disable ? 'disabled' : 'enabled'}`, 'success');
+      const display = name.replace(/__/g, '/').replace(/\.md$/, '');
+      toast(`${resourceLabel(kind, true)} ${display} ${disable ? 'disabled' : 'enabled'}`, 'success');
     },
     onError: (err: Error, _, ctx) => {
       if (ctx?.previous) queryClient.setQueryData(queryKeys.skills.all, ctx.previous);
@@ -169,7 +170,8 @@ function useResourceActions() {
     },
     onSuccess: (_, { name, kind }) => {
       clearAuditCache(queryClient);
-      toast(`Uninstalled ${resourceLabel(kind)} ${name}`, 'success');
+      const display = name.replace(/__/g, '/').replace(/\.md$/, '');
+      toast(`Uninstalled ${resourceLabel(kind)} ${display}`, 'success');
     },
     onError: (err: Error, _, ctx) => {
       if (ctx?.previous) queryClient.setQueryData(queryKeys.skills.all, ctx.previous);
@@ -189,7 +191,8 @@ function useResourceActions() {
     },
     onSuccess: (_, repoName) => {
       clearAuditCache(queryClient);
-      toast(`Uninstalled repo ${repoName}`, 'success');
+      const display = repoName.replace(/^_/, '').replace(/__/g, '/');
+      toast(`Uninstalled repo ${display}`, 'success');
     },
     onError: (err: Error, _, ctx) => {
       if (ctx?.previous) queryClient.setQueryData(queryKeys.skills.all, ctx.previous);
@@ -662,7 +665,7 @@ const SkillPostit = memo(function SkillPostit({
         {/* Org banner (tracked only) */}
         {skill.isInRepo && repoName && (
           <div className="flex items-center gap-1 mb-2">
-            <Users size={12} strokeWidth={2.5} className="text-pencil-light shrink-0" />
+            <Badge variant="default" className="text-[10px] font-semibold shrink-0">Track</Badge>
             <span className="text-xs text-pencil-light truncate">{repoName}</span>
           </div>
         )}
@@ -671,7 +674,7 @@ const SkillPostit = memo(function SkillPostit({
         <p
           className="font-mono text-sm text-pencil-light truncate mb-2"
         >
-          {skill.relPath}
+          {skill.relPath.replace(/__/g, '/')}
         </p>
 
         {/* Bottom row */}
@@ -1320,7 +1323,9 @@ function FolderTreeView({ skills, resourceKind, totalCount, isSearching, stickyT
             : <FolderOpen size={16} strokeWidth={2.5} className="text-pencil shrink-0" />
           }
           <span className={`font-bold text-pencil shrink-0${node.isRoot ? ' text-pencil-light font-semibold' : ''}`}>
-            {node.name}
+            {node.name.startsWith('_') ? (
+              <><Badge variant="default" className="mr-1.5 text-[10px] font-semibold">Track</Badge>{node.name.slice(1).replace(/__/g, '/')}</>
+            ) : node.name.replace(/__/g, '/')}
           </span>
           <span
             className="text-[11px] text-pencil-light px-1.5 py-0 bg-muted shrink-0 ml-1.5"

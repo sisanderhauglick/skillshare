@@ -164,6 +164,9 @@ func TestAgentKind_Discover(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "README.md"), []byte("# Readme"), 0o644)
 	os.WriteFile(filepath.Join(dir, "LICENSE.md"), []byte("# License"), 0o644)
 	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: test\n---\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("# Claude config"), 0o644)
+	os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("# Agents config"), 0o644)
+	os.WriteFile(filepath.Join(dir, "GEMINI.md"), []byte("# Gemini config"), 0o644)
 
 	// Non-.md files should be skipped
 	os.WriteFile(filepath.Join(dir, "config.yaml"), []byte("key: value"), 0o644)
@@ -359,5 +362,78 @@ func TestAgentKind_Discover_SkipsGitDir(t *testing.T) {
 	}
 	if resources[0].Name != "real-agent" {
 		t.Errorf("Name = %q, want %q", resources[0].Name, "real-agent")
+	}
+}
+
+func TestAgentKind_Discover_TrackedRepoWithAgentsDir(t *testing.T) {
+	dir := t.TempDir()
+
+	// Tracked repo WITH agents/ subdir — only agents/ contents should be discovered
+	repo := filepath.Join(dir, "_team-agents")
+	os.MkdirAll(filepath.Join(repo, ".git"), 0o755)
+	os.MkdirAll(filepath.Join(repo, "agents"), 0o755)
+	os.MkdirAll(filepath.Join(repo, "docs"), 0o755)
+	os.WriteFile(filepath.Join(repo, "CLAUDE.md"), []byte("# Claude config"), 0o644)
+	os.WriteFile(filepath.Join(repo, "README.md"), []byte("# Readme"), 0o644)
+	os.WriteFile(filepath.Join(repo, "intro.md"), []byte("# Not an agent"), 0o644)
+	os.WriteFile(filepath.Join(repo, "agents", "reviewer.md"), []byte("# Reviewer"), 0o644)
+	os.WriteFile(filepath.Join(repo, "agents", "tutor.md"), []byte("# Tutor"), 0o644)
+	os.WriteFile(filepath.Join(repo, "docs", "guide.md"), []byte("# Guide"), 0o644)
+
+	k := AgentKind{}
+	resources, err := k.Discover(dir)
+	if err != nil {
+		t.Fatalf("Discover error: %v", err)
+	}
+
+	names := map[string]bool{}
+	for _, r := range resources {
+		names[r.Name] = true
+	}
+
+	if len(resources) != 2 {
+		t.Fatalf("expected 2 agents (only from agents/), got %d: %v", len(resources), names)
+	}
+	if !names["reviewer"] {
+		t.Error("expected to discover 'reviewer' from agents/")
+	}
+	if !names["tutor"] {
+		t.Error("expected to discover 'tutor' from agents/")
+	}
+}
+
+func TestAgentKind_Discover_TrackedRepoWithoutAgentsDir(t *testing.T) {
+	dir := t.TempDir()
+
+	// Tracked repo WITHOUT agents/ subdir — whole repo is agents (minus excludes)
+	repo := filepath.Join(dir, "_solo-agents")
+	os.MkdirAll(filepath.Join(repo, ".git"), 0o755)
+	os.WriteFile(filepath.Join(repo, "CLAUDE.md"), []byte("# Claude config"), 0o644)
+	os.WriteFile(filepath.Join(repo, "README.md"), []byte("# Readme"), 0o644)
+	os.WriteFile(filepath.Join(repo, "code-reviewer.md"), []byte("# Reviewer"), 0o644)
+	os.WriteFile(filepath.Join(repo, "debugging.md"), []byte("# Debugger"), 0o644)
+
+	k := AgentKind{}
+	resources, err := k.Discover(dir)
+	if err != nil {
+		t.Fatalf("Discover error: %v", err)
+	}
+
+	names := map[string]bool{}
+	for _, r := range resources {
+		names[r.Name] = true
+	}
+
+	if len(resources) != 2 {
+		t.Fatalf("expected 2 agents (CLAUDE.md + README.md excluded), got %d: %v", len(resources), names)
+	}
+	if !names["code-reviewer"] {
+		t.Error("expected to discover 'code-reviewer'")
+	}
+	if !names["debugging"] {
+		t.Error("expected to discover 'debugging'")
+	}
+	if names["CLAUDE"] {
+		t.Error("CLAUDE.md should be excluded as conventional file")
 	}
 }

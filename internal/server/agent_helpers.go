@@ -1,8 +1,12 @@
 package server
 
 import (
+	"os"
+	"path/filepath"
+
 	"skillshare/internal/config"
 	"skillshare/internal/resource"
+	"skillshare/internal/utils"
 )
 
 // Kind constants for diff/sync operations.
@@ -19,6 +23,30 @@ func discoverActiveAgents(agentsSource string) []resource.DiscoveredResource {
 	}
 	discovered, _ := resource.AgentKind{}.Discover(agentsSource)
 	return resource.ActiveAgents(discovered)
+}
+
+// agentIgnorePayload returns JSON-serialisable fields describing .agentignore state.
+func agentIgnorePayload(agentsSource string) map[string]any {
+	root := ""
+	ignoredNames := []string{}
+	if agentsSource != "" {
+		resolved := utils.ResolveSymlink(agentsSource)
+		ignoreFile := filepath.Join(resolved, ".agentignore")
+		if _, err := os.Stat(ignoreFile); err == nil {
+			root = ignoreFile
+		}
+		all, _ := resource.AgentKind{}.Discover(agentsSource)
+		for _, a := range all {
+			if a.Disabled {
+				ignoredNames = append(ignoredNames, a.RelPath)
+			}
+		}
+	}
+	return map[string]any{
+		"agent_ignore_root":    root,
+		"agent_ignored_count":  len(ignoredNames),
+		"agent_ignored_skills": ignoredNames,
+	}
 }
 
 // resolveAgentPath returns the expanded agent target path for a target,

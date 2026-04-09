@@ -205,9 +205,13 @@ export default function InstallForm({
         });
         toast(res.summary, 'success');
         const allWarnings: string[] = [];
+        const allErrors: string[] = [];
         for (const item of res.results) {
-          if (item.error) toast(`${item.name}: ${item.error}`, 'error');
+          if (item.error) allErrors.push(`${item.name.replace(/__/g, '/')}: ${item.error}`);
           if (item.warnings?.length) allWarnings.push(...item.warnings.map((w) => `${item.name}: ${w}`));
+        }
+        if (allErrors.length > 0) {
+          toast(`${allErrors.length} failed: ${allErrors.join('; ')}`, 'error');
         }
         if (allWarnings.length > 0) setWarningDialog(allWarnings);
         resetForm();
@@ -306,6 +310,7 @@ export default function InstallForm({
           branch: branch.trim() || undefined,
         });
         const allWarnings: string[] = [];
+        const allErrors: string[] = [];
         const auditFindings: string[] = [];
         const auditBlockedSkills: DiscoveredSkill[] = [];
         let installed = 0;
@@ -316,12 +321,15 @@ export default function InstallForm({
               const skill = disc.skills.find((s) => s.name === item.name);
               if (skill) auditBlockedSkills.push(skill);
             } else {
-              toast(`${item.name}: ${item.error}`, 'error');
+              allErrors.push(`${item.name.replace(/__/g, '/')}: ${item.error}`);
             }
           } else {
             installed++;
           }
           if (item.warnings?.length) allWarnings.push(...item.warnings.map((w) => `${item.name}: ${w}`));
+        }
+        if (allErrors.length > 0) {
+          toast(`${allErrors.length} failed: ${allErrors.join('; ')}`, 'error');
         }
         if (installed > 0) {
           const variant = auditBlockedSkills.length > 0 ? 'warning' : 'success';
@@ -371,6 +379,7 @@ export default function InstallForm({
         kind: detectedKind === 'agent' ? 'agent' : undefined,
       });
       const allWarnings: string[] = [];
+      const allErrors: string[] = [];
       const auditFindings: string[] = [];
       const auditBlockedSkills: DiscoveredSkill[] = [];
       let installed = 0;
@@ -381,12 +390,15 @@ export default function InstallForm({
             const skill = selected.find((s) => s.name === item.name);
             if (skill) auditBlockedSkills.push(skill);
           } else {
-            toast(`${item.name}: ${item.error}`, 'error');
+            allErrors.push(`${item.name.replace(/__/g, '/')}: ${item.error}`);
           }
         } else {
           installed++;
         }
         if (item.warnings?.length) allWarnings.push(...item.warnings.map((w) => `${item.name}: ${w}`));
+      }
+      if (allErrors.length > 0) {
+        toast(`${allErrors.length} failed: ${allErrors.join('; ')}`, 'error');
       }
 
       // Only show summary + close picker when at least one skill installed

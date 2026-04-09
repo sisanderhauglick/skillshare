@@ -625,6 +625,9 @@ export interface IgnoreSources {
   ignored_skills: string[];
   ignore_root: string;
   ignore_repos: string[];
+  agent_ignore_root?: string;
+  agent_ignored_count?: number;
+  agent_ignored_skills?: string[];
 }
 
 export interface SyncResponse extends IgnoreSources {

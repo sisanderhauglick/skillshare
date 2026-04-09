@@ -51,11 +51,19 @@ type DiscoveredResource struct {
 }
 
 // ConventionalExcludes are filenames excluded from agent discovery.
+// These are well-known convention files that appear in repos but are not agents.
 var ConventionalExcludes = map[string]bool{
-	"README.md":    true,
-	"CHANGELOG.md": true,
-	"LICENSE.md":   true,
-	"HISTORY.md":   true,
-	"SECURITY.md":  true,
-	"SKILL.md":     true,
+	"README.md":          true,
+	"CHANGELOG.md":       true,
+	"LICENSE.md":         true,
+	"HISTORY.md":         true,
+	"SECURITY.md":        true,
+	"SKILL.md":           true,
+	"CLAUDE.md":          true,
+	"AGENTS.md":          true,
+	"GEMINI.md":          true,
+	"COPILOT.md":         true,
+	"CONTRIBUTING.md":    true,
+	"CODE_OF_CONDUCT.md": true,
+	"SUPPORT.md":         true,
 }
