@@ -10,7 +10,6 @@ import (
 	"skillshare/internal/audit"
 	"skillshare/internal/resource"
 	"skillshare/internal/sync"
-	"skillshare/internal/utils"
 )
 
 type auditFindingResponse struct {
@@ -71,6 +70,16 @@ type skillEntry struct {
 
 // discoverAuditAgents discovers agents (individual .md files) for audit scanning.
 func discoverAuditAgents(source string) ([]skillEntry, error) {
+	if source == "" {
+		return []skillEntry{}, nil
+	}
+	if _, err := os.Stat(source); err != nil {
+		if os.IsNotExist(err) {
+			return []skillEntry{}, nil
+		}
+		return nil, err
+	}
+
 	discovered, err := resource.AgentKind{}.Discover(source)
 	if err != nil {
 		return nil, err
@@ -84,8 +93,21 @@ func discoverAuditAgents(source string) ([]skillEntry, error) {
 
 // discoverAuditSkills discovers and deduplicates skills for audit scanning.
 func discoverAuditSkills(source string) ([]skillEntry, error) {
+	if source == "" {
+		return []skillEntry{}, nil
+	}
+	if _, err := os.Stat(source); err != nil {
+		if os.IsNotExist(err) {
+			return []skillEntry{}, nil
+		}
+		return nil, err
+	}
+
 	discovered, err := sync.DiscoverSourceSkills(source)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return []skillEntry{}, nil
+		}
 		return nil, err
 	}
 
@@ -98,18 +120,6 @@ func discoverAuditSkills(source string) ([]skillEntry, error) {
 		}
 		seen[d.SourcePath] = true
 		skills = append(skills, skillEntry{d.FlatName, d.SourcePath})
-	}
-
-	entries, _ := os.ReadDir(source)
-	for _, e := range entries {
-		if !e.IsDir() || utils.IsHidden(e.Name()) {
-			continue
-		}
-		p := filepath.Join(source, e.Name())
-		if !seen[p] {
-			seen[p] = true
-			skills = append(skills, skillEntry{e.Name(), p})
-		}
 	}
 
 	return skills, nil

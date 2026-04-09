@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"skillshare/internal/resource"
 	ssync "skillshare/internal/sync"
 	"skillshare/internal/utils"
 )
@@ -204,5 +205,42 @@ func (s *Server) handleSetSkillTargets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeError(w, http.StatusNotFound, "skill not found: "+name)
+	// Try agents if skill not found
+	s.mu.RLock()
+	agentsSource := s.agentsSource()
+	s.mu.RUnlock()
+
+	if agentsSource != "" {
+		agents, _ := resource.AgentKind{}.Discover(agentsSource)
+		for _, d := range agents {
+			if d.FlatName != name {
+				continue
+			}
+
+			var values []string
+			if req.Target != "" {
+				values = []string{req.Target}
+			}
+
+			s.mu.Lock()
+			err := utils.SetFrontmatterList(d.SourcePath, "targets", values)
+			s.mu.Unlock()
+
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to update agent: "+err.Error())
+				return
+			}
+
+			s.writeOpsLog("set-agent-targets", "ok", start, map[string]any{
+				"name":   name,
+				"target": req.Target,
+				"scope":  "ui",
+			}, "")
+
+			writeJSON(w, map[string]any{"success": true})
+			return
+		}
+	}
+
+	writeError(w, http.StatusNotFound, "resource not found: "+name)
 }

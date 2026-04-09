@@ -55,3 +55,26 @@ func mergeAgentDiffItems(diffs []diffTarget, name string, items []diffItem) []di
 		Items:  items,
 	})
 }
+
+// appendAgentDiffs merges agent diff items for every agent-capable target.
+// Unlike sync-matrix, diff must still inspect targets when the source is empty
+// so orphaned synced agents surface as prune drift, matching skills behavior.
+func (s *Server) appendAgentDiffs(diffs []diffTarget, targets map[string]config.TargetConfig, agentsSource, filterTarget string) []diffTarget {
+	agents := discoverActiveAgents(agentsSource)
+	builtinAgents := s.builtinAgentTargets()
+
+	for name, target := range targets {
+		if filterTarget != "" && filterTarget != name {
+			continue
+		}
+		agentPath := resolveAgentPath(target, builtinAgents, name)
+		if agentPath == "" {
+			continue
+		}
+		if items := computeAgentTargetDiff(agentPath, agents); len(items) > 0 {
+			diffs = mergeAgentDiffItems(diffs, name, items)
+		}
+	}
+
+	return diffs
+}

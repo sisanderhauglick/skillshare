@@ -67,24 +67,7 @@ func (s *Server) handleDiffStream(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// Agent diffs
-	if agents := discoverActiveAgents(agentsSource); len(agents) > 0 {
-		builtinAgents := s.builtinAgentTargets()
-		for name, target := range targets {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-			agentPath := resolveAgentPath(target, builtinAgents, name)
-			if agentPath == "" {
-				continue
-			}
-			if items := computeAgentTargetDiff(agentPath, agents); len(items) > 0 {
-				diffs = mergeAgentDiffItems(diffs, name, items)
-			}
-		}
-	}
+	diffs = s.appendAgentDiffs(diffs, targets, agentsSource, "")
 
 	donePayload := map[string]any{"diffs": diffs}
 	maps.Copy(donePayload, ignorePayload(ignoreStats))

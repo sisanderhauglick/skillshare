@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"maps"
 	"net/http"
+	"os"
 	"time"
 
 	"skillshare/internal/config"
@@ -175,7 +176,8 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	// Agent sync (skip when kind == "skill")
 	if body.Kind != kindSkill {
 		agentsSource := s.agentsSource()
-		if agents := discoverActiveAgents(agentsSource); len(agents) > 0 {
+		if info, err := os.Stat(agentsSource); err == nil && info.IsDir() {
+			agents := discoverActiveAgents(agentsSource)
 			builtinAgents := s.builtinAgentTargets()
 
 			for name, target := range s.cfg.Targets {
@@ -195,6 +197,15 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 
+				// Prune orphan agents even when the source is empty so uninstall-all
+				// matches skills and clears previously synced target entries.
+				var pruned []string
+				if agentMode == "merge" {
+					pruned, _ = ssync.PruneOrphanAgentLinks(agentPath, agents, body.DryRun)
+				} else if agentMode == "copy" {
+					pruned, _ = ssync.PruneOrphanAgentCopies(agentPath, agents, body.DryRun)
+				}
+
 				// Find or create result entry for this target
 				idx := -1
 				for i := range results {
@@ -203,29 +214,21 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 						break
 					}
 				}
-				if idx >= 0 {
-					results[idx].Linked = append(results[idx].Linked, agentResult.Linked...)
-					results[idx].Updated = append(results[idx].Updated, agentResult.Updated...)
-					results[idx].Skipped = append(results[idx].Skipped, agentResult.Skipped...)
-				} else if len(agentResult.Linked) > 0 || len(agentResult.Updated) > 0 || len(agentResult.Skipped) > 0 {
+				if idx < 0 && (len(agentResult.Linked) > 0 || len(agentResult.Updated) > 0 || len(agentResult.Skipped) > 0 || len(pruned) > 0) {
 					results = append(results, syncTargetResult{
 						Target:  name,
-						Linked:  agentResult.Linked,
-						Updated: agentResult.Updated,
-						Skipped: agentResult.Skipped,
+						Linked:  make([]string, 0),
+						Updated: make([]string, 0),
+						Skipped: make([]string, 0),
 						Pruned:  make([]string, 0),
 					})
 					idx = len(results) - 1
 				}
 
-				// Prune orphan agents — reuse idx to avoid re-scanning
-				var pruned []string
-				if agentMode == "merge" {
-					pruned, _ = ssync.PruneOrphanAgentLinks(agentPath, agents, body.DryRun)
-				} else if agentMode == "copy" {
-					pruned, _ = ssync.PruneOrphanAgentCopies(agentPath, agents, body.DryRun)
-				}
-				if idx >= 0 && len(pruned) > 0 {
+				if idx >= 0 {
+					results[idx].Linked = append(results[idx].Linked, agentResult.Linked...)
+					results[idx].Updated = append(results[idx].Updated, agentResult.Updated...)
+					results[idx].Skipped = append(results[idx].Skipped, agentResult.Skipped...)
 					results[idx].Pruned = append(results[idx].Pruned, pruned...)
 				}
 			}
@@ -293,22 +296,7 @@ func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 		diffs = append(diffs, s.computeTargetDiff(name, target, discovered, globalMode, source))
 	}
 
-	// Agent diffs
-	if agents := discoverActiveAgents(agentsSource); len(agents) > 0 {
-		builtinAgents := s.builtinAgentTargets()
-		for name, target := range targets {
-			if filterTarget != "" && filterTarget != name {
-				continue
-			}
-			agentPath := resolveAgentPath(target, builtinAgents, name)
-			if agentPath == "" {
-				continue
-			}
-			if items := computeAgentTargetDiff(agentPath, agents); len(items) > 0 {
-				diffs = mergeAgentDiffItems(diffs, name, items)
-			}
-		}
-	}
+	diffs = s.appendAgentDiffs(diffs, targets, agentsSource, filterTarget)
 
 	resp := map[string]any{"diffs": diffs}
 	maps.Copy(resp, ignorePayload(ignoreStats))

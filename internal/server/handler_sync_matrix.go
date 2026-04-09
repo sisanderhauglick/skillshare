@@ -99,7 +99,7 @@ func (s *Server) handleSyncMatrix(w http.ResponseWriter, r *http.Request) {
 			}
 		} else {
 			for _, agent := range agents {
-				status, reason := ssync.ClassifySkillForTarget(agent.FlatName, nil, name, ac.Include, ac.Exclude)
+				status, reason := ssync.ClassifySkillForTarget(agent.FlatName, agent.Targets, name, ac.Include, ac.Exclude)
 				entries = append(entries, syncMatrixEntry{
 					Skill:  agent.FlatName,
 					Target: name,
@@ -209,7 +209,7 @@ func (s *Server) handleSyncMatrixPreview(w http.ResponseWriter, r *http.Request)
 				}
 			} else {
 				for _, agent := range agents {
-					status, reason := ssync.ClassifySkillForTarget(agent.FlatName, nil, body.Target, body.AgentInclude, body.AgentExclude)
+					status, reason := ssync.ClassifySkillForTarget(agent.FlatName, agent.Targets, body.Target, body.AgentInclude, body.AgentExclude)
 					entries = append(entries, syncMatrixEntry{
 						Skill:  agent.FlatName,
 						Target: body.Target,

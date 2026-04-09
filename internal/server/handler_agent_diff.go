@@ -36,7 +36,8 @@ func computeAgentTargetDiff(targetDir string, agents []resource.DiscoveredResour
 
 	// Missing agents → link
 	for flatName, agent := range expected {
-		if _, ok := existing[flatName]; !ok {
+		fileType, ok := existing[flatName]
+		if !ok {
 			items = append(items, diffItem{
 				Skill:  flatName,
 				Action: "link",
@@ -45,9 +46,10 @@ func computeAgentTargetDiff(targetDir string, agents []resource.DiscoveredResour
 			})
 			continue
 		}
+
 		// Exists — check if symlink points to correct source
 		targetPath := filepath.Join(targetDir, flatName)
-		if utils.IsSymlinkOrJunction(targetPath) {
+		if fileType&os.ModeSymlink != 0 || utils.IsSymlinkOrJunction(targetPath) {
 			absLink, err := utils.ResolveLinkTarget(targetPath)
 			if err != nil {
 				items = append(items, diffItem{
@@ -67,9 +69,16 @@ func computeAgentTargetDiff(targetDir string, agents []resource.DiscoveredResour
 					Kind:   kindAgent,
 				})
 			}
-			// else: in sync, no item emitted
+			continue
 		}
-		// Non-symlink existing file: already local, no action needed for expected agents
+
+		// Match skills diff semantics: a local file blocks sync unless forced.
+		items = append(items, diffItem{
+			Skill:  flatName,
+			Action: "skip",
+			Reason: "local copy (sync --force to replace)",
+			Kind:   kindAgent,
+		})
 	}
 
 	// Orphan/local detection
@@ -77,7 +86,8 @@ func computeAgentTargetDiff(targetDir string, agents []resource.DiscoveredResour
 		if _, ok := expected[name]; ok {
 			continue
 		}
-		if fileType&os.ModeSymlink != 0 {
+		targetPath := filepath.Join(targetDir, name)
+		if fileType&os.ModeSymlink != 0 || utils.IsSymlinkOrJunction(targetPath) {
 			items = append(items, diffItem{
 				Skill:  name,
 				Action: "prune",

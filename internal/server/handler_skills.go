@@ -101,7 +101,9 @@ func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
 				FlatName:   d.FlatName,
 				RelPath:    d.RelPath,
 				SourcePath: d.SourcePath,
+				IsInRepo:   d.IsInRepo,
 				Disabled:   d.Disabled,
+				Targets:    d.Targets,
 			}
 
 			// Read from centralized agents metadata store
@@ -114,6 +116,15 @@ func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
 				item.Type = entry.Type
 				item.RepoURL = entry.RepoURL
 				item.Version = entry.Version
+			} else if d.RepoRelPath != "" {
+				repoPath := filepath.Join(agentsSource, filepath.FromSlash(d.RepoRelPath))
+				if repoURL, err := git.GetRemoteURL(repoPath); err == nil {
+					item.Source = repoURL
+					item.RepoURL = repoURL
+				}
+				if version, err := git.GetCurrentFullHash(repoPath); err == nil {
+					item.Version = version
+				}
 			}
 
 			items = append(items, item)
@@ -227,7 +238,9 @@ func (s *Server) handleGetSkill(w http.ResponseWriter, r *http.Request) {
 				FlatName:   d.FlatName,
 				RelPath:    d.RelPath,
 				SourcePath: d.SourcePath,
+				IsInRepo:   d.IsInRepo,
 				Disabled:   d.Disabled,
+				Targets:    d.Targets,
 			}
 
 			agentKey := strings.TrimSuffix(d.RelPath, ".md")
@@ -239,6 +252,15 @@ func (s *Server) handleGetSkill(w http.ResponseWriter, r *http.Request) {
 				item.Type = entry.Type
 				item.RepoURL = entry.RepoURL
 				item.Version = entry.Version
+			} else if d.RepoRelPath != "" {
+				repoPath := filepath.Join(agentsSource, filepath.FromSlash(d.RepoRelPath))
+				if repoURL, err := git.GetRemoteURL(repoPath); err == nil {
+					item.Source = repoURL
+					item.RepoURL = repoURL
+				}
+				if version, err := git.GetCurrentFullHash(repoPath); err == nil {
+					item.Version = version
+				}
 			}
 
 			writeJSON(w, map[string]any{

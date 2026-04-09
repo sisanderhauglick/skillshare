@@ -159,7 +159,7 @@ func (s *Server) updateSingleByKind(name, kind string, force, skipAudit bool) up
 	}
 }
 
-func (s *Server) updateAgent(name string, _ bool, _ bool) updateResultItem {
+func (s *Server) updateAgent(name string, force, skipAudit bool) updateResultItem {
 	agentsSource := s.agentsSource()
 	if agentsSource == "" {
 		return updateResultItem{Name: name, Kind: "agent", Action: "error", Message: "agents source is not configured"}
@@ -168,6 +168,11 @@ func (s *Server) updateAgent(name string, _ bool, _ bool) updateResultItem {
 	localAgent, err := resolveAgentResource(agentsSource, name)
 	if err != nil {
 		return updateResultItem{Name: name, Kind: "agent", Action: "error", Message: err.Error()}
+	}
+
+	if localAgent.RepoRelPath != "" {
+		repoPath := filepath.Join(agentsSource, filepath.FromSlash(localAgent.RepoRelPath))
+		return s.updateTrackedRepo(agentMetaKey(localAgent.RelPath), repoPath, force, skipAudit)
 	}
 
 	metaKey := agentMetaKey(localAgent.RelPath)
