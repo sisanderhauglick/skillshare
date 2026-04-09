@@ -28,6 +28,7 @@ import StreamProgressBar from '../components/StreamProgressBar';
 import SyncResultList from '../components/SyncResultList';
 import { radius, shadows } from '../design';
 import KindBadge from '../components/KindBadge';
+import SegmentedControl from '../components/SegmentedControl';
 
 function extractIgnoreSources(data: IgnoreSources): IgnoreSources {
   return {
@@ -47,6 +48,7 @@ export default function SyncPage() {
   const [ignoreSources, setIgnoreSources] = useState<IgnoreSources | null>(null);
   const [ignoredExpanded, setIgnoredExpanded] = useState(false);
   const { toast } = useToast();
+  const [syncScope, setSyncScope] = useState<'skill' | 'agent' | 'both'>('both');
   const toastRef = useRef(toast);
   useEffect(() => { toastRef.current = toast; });
 
@@ -95,7 +97,11 @@ export default function SyncPage() {
     setLastDryRun(dryRun);
     setSyncWarnings([]);
     try {
-      const res = await api.sync({ dryRun, force });
+      const res = await api.sync({
+        dryRun,
+        force,
+        ...(syncScope !== 'both' ? { kind: syncScope } : {}),
+      });
       setResults(res.results);
       setSyncWarnings(res.warnings ?? []);
       setIgnoreSources(extractIgnoreSources(res));
@@ -116,29 +122,29 @@ export default function SyncPage() {
   // Derived ignored skills list
   const ignoredSkills = ignoreSources?.ignored_skills ?? [];
 
-  // Calculate diff summary
+  // Calculate diff summary by kind
   const diffs = diffData ?? [];
-  const totalActions = diffs.reduce((sum, d) => sum + (d.items?.length ?? 0), 0);
-  const pendingLinks = diffs.reduce(
-    (sum, d) => sum + (d.items?.filter((i) => i.action === 'link').length ?? 0),
-    0,
-  );
-  const pendingUpdates = diffs.reduce(
-    (sum, d) => sum + (d.items?.filter((i) => i.action === 'update').length ?? 0),
-    0,
-  );
-  const pendingPrunes = diffs.reduce(
-    (sum, d) => sum + (d.items?.filter((i) => i.action === 'prune').length ?? 0),
-    0,
-  );
-  const pendingSkips = diffs.reduce(
-    (sum, d) => sum + (d.items?.filter((i) => i.action === 'skip').length ?? 0),
-    0,
-  );
-  const pendingLocal = diffs.reduce(
-    (sum, d) => sum + (d.items?.filter((i) => i.action === 'local').length ?? 0),
-    0,
-  );
+  const allItems = diffs.flatMap((d) => d.items ?? []);
+
+  const countByKindAction = (kind: string, action: string) =>
+    allItems.filter((i) => (i.kind ?? 'skill') === kind && i.action === action).length;
+
+  const skillLinks = countByKindAction('skill', 'link');
+  const skillUpdates = countByKindAction('skill', 'update');
+  const skillPrunes = countByKindAction('skill', 'prune');
+  const skillSkips = countByKindAction('skill', 'skip');
+  const skillLocal = countByKindAction('skill', 'local');
+  const skillSync = skillLinks + skillUpdates + skillPrunes + skillSkips;
+
+  const agentLinks = countByKindAction('agent', 'link');
+  const agentUpdates = countByKindAction('agent', 'update');
+  const agentPrunes = countByKindAction('agent', 'prune');
+  const agentSkips = countByKindAction('agent', 'skip');
+  const agentLocal = countByKindAction('agent', 'local');
+  const agentSync = agentLinks + agentUpdates + agentPrunes + agentSkips;
+
+  const totalActions = allItems.length;
+  const pendingLocal = skillLocal + agentLocal;
   const syncActions = totalActions - pendingLocal;
 
   return (
@@ -217,14 +223,25 @@ export default function SyncPage() {
           {diffLoading ? (
             <p className="text-pencil-light text-base">Checking status...</p>
           ) : syncActions > 0 ? (
-            <div className="flex flex-wrap items-center justify-center gap-3">
-              <span className="text-base text-pencil">
-                Pending changes:
-              </span>
-              {pendingLinks > 0 && <Badge variant="success">{pendingLinks} to link</Badge>}
-              {pendingUpdates > 0 && <Badge variant="info">{pendingUpdates} to update</Badge>}
-              {pendingSkips > 0 && <Badge variant="warning">{pendingSkips} skipped</Badge>}
-              {pendingPrunes > 0 && <Badge variant="danger">{pendingPrunes} to prune</Badge>}
+            <div className="flex flex-col items-center gap-2">
+              {skillSync > 0 && (
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <KindBadge kind="skill" />
+                  {skillLinks > 0 && <Badge variant="success">{skillLinks} to link</Badge>}
+                  {skillUpdates > 0 && <Badge variant="info">{skillUpdates} to update</Badge>}
+                  {skillSkips > 0 && <Badge variant="warning">{skillSkips} skipped</Badge>}
+                  {skillPrunes > 0 && <Badge variant="danger">{skillPrunes} to prune</Badge>}
+                </div>
+              )}
+              {agentSync > 0 && (
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <KindBadge kind="agent" />
+                  {agentLinks > 0 && <Badge variant="success">{agentLinks} to link</Badge>}
+                  {agentUpdates > 0 && <Badge variant="info">{agentUpdates} to update</Badge>}
+                  {agentSkips > 0 && <Badge variant="warning">{agentSkips} skipped</Badge>}
+                  {agentPrunes > 0 && <Badge variant="danger">{agentPrunes} to prune</Badge>}
+                </div>
+              )}
               {pendingLocal > 0 && <Badge variant="default">{pendingLocal} local only</Badge>}
               {ignoredSkills.length > 0 && (
                 <Badge variant="default">{ignoredSkills.length} ignored</Badge>
@@ -234,9 +251,7 @@ export default function SyncPage() {
             <div className="flex flex-wrap items-center justify-center gap-3">
               <div className="flex items-center gap-2 text-success">
                 <CheckCircle size={18} strokeWidth={2.5} />
-                <span className="text-base font-medium">
-                  All targets are in sync!
-                </span>
+                <span className="text-base font-medium">All targets are in sync!</span>
               </div>
               <Badge variant="default">{pendingLocal} local only</Badge>
               {ignoredSkills.length > 0 && (
@@ -247,15 +262,26 @@ export default function SyncPage() {
             <div className="flex flex-wrap items-center justify-center gap-3">
               <div className="flex items-center gap-2 text-success">
                 <CheckCircle size={18} strokeWidth={2.5} />
-                <span className="text-base font-medium">
-                  All targets are in sync!
-                </span>
+                <span className="text-base font-medium">All targets are in sync!</span>
               </div>
               {ignoredSkills.length > 0 && (
                 <Badge variant="default">{ignoredSkills.length} ignored</Badge>
               )}
             </div>
           )}
+
+          {/* Scope selector */}
+          <SegmentedControl
+            value={syncScope}
+            onChange={setSyncScope}
+            options={[
+              { value: 'skill' as const, label: 'Skills' },
+              { value: 'agent' as const, label: 'Agents' },
+              { value: 'both' as const, label: 'Both' },
+            ]}
+            size="sm"
+            connected
+          />
 
           {/* Sync split button */}
           <SplitButton
@@ -267,7 +293,7 @@ export default function SyncPage() {
             dropdownAlign="right"
             items={[
               {
-                label: 'Force Sync',
+                label: syncScope === 'agent' ? 'Force Sync Agents' : syncScope === 'skill' ? 'Force Sync Skills' : 'Force Sync',
                 icon: <Zap size={16} strokeWidth={2.5} />,
                 onClick: () => handleSync({ force: true }),
                 confirm: true,
@@ -280,7 +306,13 @@ export default function SyncPage() {
             ]}
           >
             {!syncing && <RefreshCw size={22} strokeWidth={2.5} />}
-            {syncing ? 'Syncing...' : 'Sync Now'}
+            {syncing
+              ? 'Syncing...'
+              : syncScope === 'skill'
+                ? 'Sync Skills'
+                : syncScope === 'agent'
+                  ? 'Sync Agents'
+                  : 'Sync Now'}
           </SplitButton>
         </div>
       </Card>
