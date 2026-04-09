@@ -635,7 +635,8 @@ func (m listTUIModel) renderFilterBar() string {
 
 func (m *listTUIModel) syncListSize() {
 	if listSplitActive(m.termWidth) {
-		panelHeight := m.termHeight - 7 // -2 for tab bar
+		// tab(1) + gap(1) + panel + gap(1) + filter(1) + summary(1) + gap(1) + help(1) + trail(1) = 8 overhead
+		panelHeight := m.termHeight - 8
 		if panelHeight < 6 {
 			panelHeight = 6
 		}
@@ -643,7 +644,7 @@ func (m *listTUIModel) syncListSize() {
 		return
 	}
 
-	listHeight := m.termHeight - 22 // -2 for tab bar
+	listHeight := m.termHeight - 22
 	if listHeight < 6 {
 		listHeight = 6
 	}
@@ -690,7 +691,7 @@ func (m listTUIModel) viewSplit() string {
 	b.WriteString(m.renderTabBar())
 	b.WriteString("\n\n")
 
-	panelHeight := m.termHeight - 7 // -2 for tab bar
+	panelHeight := m.termHeight - 8
 	if panelHeight < 6 {
 		panelHeight = 6
 	}
