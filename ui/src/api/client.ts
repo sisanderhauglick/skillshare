@@ -217,7 +217,7 @@ export const api = {
     }),
 
   // Sync
-  sync: (opts: { dryRun?: boolean; force?: boolean }) =>
+  sync: (opts: { dryRun?: boolean; force?: boolean; kind?: 'skill' | 'agent' }) =>
     apiFetch<SyncResponse>('/sync', {
       method: 'POST',
       body: JSON.stringify(opts),
