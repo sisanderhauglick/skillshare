@@ -188,11 +188,8 @@ func cmdAudit(args []string) error {
 		if err != nil {
 			return err
 		}
-		if kind == kindAgents {
-			sourcePath = rt.agentsSourcePath
-		} else {
-			sourcePath = rt.sourcePath
-		}
+		sourcePath = rt.sourcePath
+		agentsSourcePath = rt.agentsSourcePath
 		projectRoot = cwd
 		defaultThreshold = rt.config.Audit.BlockThreshold
 		configProfile = rt.config.Audit.Profile
