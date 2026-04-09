@@ -507,6 +507,14 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ raw }),
     }),
+
+  // Agentignore
+  getAgentignore: () => apiFetch<AgentignoreResponse>('/agentignore'),
+  putAgentignore: (raw: string) =>
+    apiFetch<{ success: boolean }>('/agentignore', {
+      method: 'PUT',
+      body: JSON.stringify({ raw }),
+    }),
 };
 
 // Types
@@ -1086,4 +1094,19 @@ export interface SkillignoreResponse {
   path: string;
   raw: string;
   stats?: SkillignoreStats;
+}
+
+// Agentignore types
+export interface AgentignoreStats {
+  pattern_count: number;
+  ignored_count: number;
+  patterns: string[];
+  ignored_agents: string[];
+}
+
+export interface AgentignoreResponse {
+  exists: boolean;
+  path: string;
+  raw: string;
+  stats?: AgentignoreStats;
 }
