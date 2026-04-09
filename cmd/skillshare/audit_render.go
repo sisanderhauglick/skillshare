@@ -120,16 +120,28 @@ func launchAuditTUIWithTabs(results []*audit.Result, scanOutputs []audit.ScanOut
 		}
 	}
 
+	// Filter out synthetic _cross-skill result — it's not a real resource.
+	var filteredResults []*audit.Result
+	var filteredOutputs []audit.ScanOutput
+	for i, r := range results {
+		if r.SkillName != "_cross-skill" {
+			filteredResults = append(filteredResults, r)
+			if i < len(scanOutputs) {
+				filteredOutputs = append(filteredOutputs, scanOutputs[i])
+			}
+		}
+	}
+
 	// Arrange into skills vs agents.
 	var skillResults, agentResults []*audit.Result
 	var skillOutputs, agentOutputs []audit.ScanOutput
 	var skillSummary, agentSummary auditRunSummary
 
 	if ctx.kind == kindAgents {
-		agentResults, agentOutputs, agentSummary = results, scanOutputs, summary
+		agentResults, agentOutputs, agentSummary = filteredResults, filteredOutputs, summary
 		skillResults, skillOutputs, skillSummary = otherResults, otherOutputs, otherSummary
 	} else {
-		skillResults, skillOutputs, skillSummary = results, scanOutputs, summary
+		skillResults, skillOutputs, skillSummary = filteredResults, filteredOutputs, summary
 		agentResults, agentOutputs, agentSummary = otherResults, otherOutputs, otherSummary
 	}
 
