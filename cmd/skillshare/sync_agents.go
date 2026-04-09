@@ -43,15 +43,11 @@ func syncAgentsGlobal(cfg *config.Config, dryRun, force, jsonOutput bool, start 
 	}
 	agents := resource.ActiveAgents(allAgents)
 
-	if len(agents) == 0 {
-		if !jsonOutput {
-			ui.Info("No agents found in %s", agentsSource)
-		}
-		return agentSyncStats{}, nil
-	}
-
 	if !jsonOutput {
 		ui.Header("Syncing agents")
+		if len(agents) == 0 {
+			ui.Info("No agents found in %s; pruning synced target entries only", agentsSource)
+		}
 		if dryRun {
 			ui.Warning("Dry run mode - no changes will be made")
 		}
@@ -163,15 +159,11 @@ func syncAgentsProject(projectRoot string, dryRun, force, jsonOutput bool, start
 	}
 	agents := resource.ActiveAgents(allAgents)
 
-	if len(agents) == 0 {
-		if !jsonOutput {
-			ui.Info("No project agents found")
-		}
-		return nil
-	}
-
 	if !jsonOutput {
 		ui.Header("Syncing agents (project)")
+		if len(agents) == 0 {
+			ui.Info("No project agents found; pruning synced target entries only")
+		}
 		if dryRun {
 			ui.Warning("Dry run mode - no changes will be made")
 		}

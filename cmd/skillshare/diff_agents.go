@@ -2,12 +2,14 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"skillshare/internal/config"
 	"skillshare/internal/resource"
 	"skillshare/internal/ui"
+	"skillshare/internal/utils"
 )
 
 // diffProjectAgents computes agent diffs for project mode.
@@ -95,9 +97,6 @@ func diffGlobalAgents(cfg *config.Config, targetName string, opts diffRenderOpts
 func mergeAgentDiffsGlobal(cfg *config.Config, results []targetDiffResult, targetName string) []targetDiffResult {
 	agentsSource := cfg.EffectiveAgentsSource()
 	agents, _ := resource.AgentKind{}.Discover(agentsSource)
-	if len(agents) == 0 {
-		return results
-	}
 
 	builtinAgents := config.DefaultAgentTargets()
 	var agentResults []targetDiffResult
@@ -128,9 +127,6 @@ func mergeAgentDiffsProject(root string, results []targetDiffResult, targetName 
 
 	agentsSource := rt.agentsSourcePath
 	agents, _ := resource.AgentKind{}.Discover(agentsSource)
-	if len(agents) == 0 {
-		return results
-	}
 
 	builtinAgents := config.ProjectAgentTargets()
 	var agentResults []targetDiffResult
@@ -203,8 +199,9 @@ func computeAgentDiff(targetName, targetDir string, agents []resource.Discovered
 	}
 
 	// Missing in target (need sync)
-	for flatName := range expected {
-		if _, ok := existing[flatName]; !ok {
+	for flatName, agent := range expected {
+		fileType, ok := existing[flatName]
+		if !ok {
 			r.items = append(r.items, copyDiffEntry{
 				action: "add",
 				name:   flatName,
@@ -214,13 +211,55 @@ func computeAgentDiff(targetName, targetDir string, agents []resource.Discovered
 			})
 			r.synced = false
 			r.syncCount++
+			continue
 		}
+
+		targetPath := filepath.Join(targetDir, flatName)
+		if fileType&os.ModeSymlink != 0 || utils.IsSymlinkOrJunction(targetPath) {
+			absLink, err := utils.ResolveLinkTarget(targetPath)
+			if err != nil {
+				r.items = append(r.items, copyDiffEntry{
+					action: "modify",
+					name:   flatName,
+					kind:   "agent",
+					reason: "link target unreadable",
+					isSync: true,
+				})
+				r.synced = false
+				r.syncCount++
+				continue
+			}
+			absSource, _ := filepath.Abs(agent.AbsPath)
+			if !utils.PathsEqual(absLink, absSource) {
+				r.items = append(r.items, copyDiffEntry{
+					action: "modify",
+					name:   flatName,
+					kind:   "agent",
+					reason: "symlink points elsewhere",
+					isSync: true,
+				})
+				r.synced = false
+				r.syncCount++
+			}
+			continue
+		}
+
+		r.items = append(r.items, copyDiffEntry{
+			action: "modify",
+			name:   flatName,
+			kind:   "agent",
+			reason: "local copy (sync --force to replace)",
+			isSync: true,
+		})
+		r.synced = false
+		r.syncCount++
 	}
 
 	// Extra in target (orphans)
 	for name, fileType := range existing {
 		if _, ok := expected[name]; !ok {
-			if fileType&os.ModeSymlink != 0 {
+			targetPath := filepath.Join(targetDir, name)
+			if fileType&os.ModeSymlink != 0 || utils.IsSymlinkOrJunction(targetPath) {
 				r.items = append(r.items, copyDiffEntry{
 					action: "remove",
 					name:   name,
@@ -229,6 +268,7 @@ func computeAgentDiff(targetName, targetDir string, agents []resource.Discovered
 					isSync: true,
 				})
 				r.synced = false
+				r.syncCount++
 			} else {
 				r.items = append(r.items, copyDiffEntry{
 					action: "local",
@@ -241,5 +281,6 @@ func computeAgentDiff(targetName, targetDir string, agents []resource.Discovered
 		}
 	}
 
+	r.synced = r.syncCount == 0 && r.localCount == 0
 	return r
 }
