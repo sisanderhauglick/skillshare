@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"skillshare/internal/theme"
 	"skillshare/internal/utils"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -413,7 +414,7 @@ func renderContentFullWidth(m listTUIModel) string {
 
 	skillName := filepath.Base(m.contentSkillKey)
 	b.WriteString("\n")
-	b.WriteString(tc.Title.Render(fmt.Sprintf("  %s", skillName)))
+	b.WriteString(theme.Title().Render(fmt.Sprintf("  %s", skillName)))
 	b.WriteString("\n\n")
 
 	textW := m.contentPanelWidth()
@@ -443,8 +444,8 @@ func renderContentFullWidth(m listTUIModel) string {
 func renderContentDualPane(m listTUIModel) string {
 	var b strings.Builder
 
-	titleStyle := tc.Title
-	dimStyle := tc.Dim
+	titleStyle := theme.Title()
+	dimStyle := theme.Dim()
 
 	skillName := filepath.Base(m.contentSkillKey)
 	fileName := ""
@@ -480,7 +481,7 @@ func renderContentDualPane(m listTUIModel) string {
 		PaddingLeft(1).
 		Render(sidebarStr)
 
-	borderStyle := tc.Border.
+	borderStyle := theme.Dim().
 		Height(contentHeight).MaxHeight(contentHeight)
 	borderCol := strings.Repeat("│\n", contentHeight)
 	borderPanel := borderStyle.Render(strings.TrimRight(borderCol, "\n"))
@@ -511,10 +512,10 @@ func renderSidebarStr(m listTUIModel, width, height int) string {
 		return "(no files)"
 	}
 
-	selectedStyle := lipgloss.NewStyle().Bold(true).Foreground(tc.BrandYellow)
-	dirStyle := tc.Cyan
+	selectedStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#D4D93C"))
+	dirStyle := theme.Accent()
 	fileStyle := lipgloss.NewStyle()
-	dimStyle := tc.Dim
+	dimStyle := theme.Dim()
 
 	total := len(m.treeNodes)
 	start := m.treeScroll

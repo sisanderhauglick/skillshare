@@ -5,6 +5,8 @@ import (
 	"io"
 	"strings"
 
+	"skillshare/internal/theme"
+
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -59,7 +61,7 @@ func renderGroupRow(w io.Writer, g groupItem, width int) {
 	if g.count > 0 {
 		label += fmt.Sprintf(" (%d)", g.count)
 	}
-	label = tc.Dim.Render(label)
+	label = theme.Dim().Render(label)
 
 	lineWidth := width - lipgloss.Width(label) - 3 // "─ " prefix + " "
 	if lineWidth < 2 {
@@ -67,7 +69,7 @@ func renderGroupRow(w io.Writer, g groupItem, width int) {
 	}
 	line := strings.Repeat("─", lineWidth)
 
-	fmt.Fprint(w, tc.Dim.Render("─ ")+label+" "+tc.Dim.Render(line))
+	fmt.Fprint(w, theme.Dim().Render("─ ")+label+" "+theme.Dim().Render(line))
 }
 
 func renderSkillRow(w io.Writer, skill skillItem, width int, selected bool, allTab bool) {
@@ -77,11 +79,11 @@ func renderSkillRow(w io.Writer, skill skillItem, width int, selected bool, allT
 // renderPrefixRow renders a single-line list row with a "▌" prefix bar.
 // Shared by list TUI and audit TUI delegates.
 func renderPrefixRow(w io.Writer, line string, width int, selected bool) {
-	prefixStyle := tc.ListRowPrefix
-	bodyStyle := tc.ListRow
+	prefixStyle := theme.Dim()
+	bodyStyle := lipgloss.NewStyle().PaddingLeft(1)
 	if selected {
-		prefixStyle = tc.ListRowPrefixSelected
-		bodyStyle = tc.ListRowSelected
+		prefixStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#D4D93C"))
+		bodyStyle = theme.SelectedRow().PaddingLeft(1)
 		// Strip embedded ANSI so ListRowSelected's background fills the full
 		// row width — compound ANSI sequences (e.g. icon + name) contain
 		// resets that break the parent background propagation in lipgloss.
@@ -146,13 +148,13 @@ func (d prefixItemDelegate) Render(w io.Writer, m list.Model, index int, item li
 // renderPrefixRowWithDesc renders a 2-line list row with a "▌" prefix bar.
 // Line 1: title (same as renderPrefixRow). Line 2: description in muted style.
 func renderPrefixRowWithDesc(w io.Writer, title, desc string, width int, selected bool) {
-	prefixStyle := tc.ListRowPrefix
-	bodyStyle := tc.ListRow
-	descStyle := tc.ListMeta
+	prefixStyle := theme.Dim()
+	bodyStyle := lipgloss.NewStyle().PaddingLeft(1)
+	descStyle := theme.Dim().PaddingLeft(1)
 	if selected {
-		prefixStyle = tc.ListRowPrefixSelected
-		bodyStyle = tc.ListRowSelected
-		descStyle = tc.ListMetaSelected
+		prefixStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#D4D93C"))
+		bodyStyle = theme.SelectedRow().PaddingLeft(1)
+		descStyle = theme.SelectedRow().PaddingLeft(1)
 		title = xansi.Strip(title)
 		desc = xansi.Strip(desc)
 	}
@@ -208,14 +210,14 @@ func (i skillItem) Description() string {
 func skillTitleLine(e skillEntry, allTab bool) string {
 	if e.Disabled {
 		// Disabled: dim the entire name + ⊘ prefix
-		return tc.Dim.Render("⊘ " + compactSkillPath(e))
+		return theme.Dim().Render("⊘ " + compactSkillPath(e))
 	}
 	var prefix string
 	if allTab {
 		if e.Kind == "agent" {
-			prefix = tc.Cyan.Render("[A]") + " "
+			prefix = theme.Accent().Render("[A]") + " "
 		} else {
-			prefix = tc.Cyan.Render("[S]") + " "
+			prefix = theme.Accent().Render("[S]") + " "
 		}
 	}
 	title := prefix + colorSkillPath(compactSkillPath(e))
@@ -253,10 +255,10 @@ func baseSkillPath(e skillEntry) string {
 func skillTypeBadge(e skillEntry) string {
 	var badge string
 	if e.RepoName == "" && e.Source == "" {
-		badge = tc.BadgeLocal.Render("local")
+		badge = theme.Badge().Render("local")
 	}
 	if e.Disabled {
-		disabled := tc.BadgeDisabled.Render("disabled")
+		disabled := theme.Badge().Faint(true).Render("disabled")
 		if badge != "" {
 			return badge + "  " + disabled
 		}
@@ -270,7 +272,7 @@ func skillTypeBadge(e skillEntry) string {
 func colorSkillPath(path string) string {
 	segments := strings.Split(path, "/")
 	if len(segments) <= 1 {
-		return tc.Emphasis.Render(path)
+		return theme.Primary().Render(path)
 	}
 
 	dirs := segments[:len(segments)-1]
@@ -279,21 +281,21 @@ func colorSkillPath(path string) string {
 	var parts []string
 	for idx, dir := range dirs {
 		if idx == 0 {
-			parts = append(parts, tc.Cyan.Render(dir))
+			parts = append(parts, theme.Accent().Render(dir))
 		} else {
-			parts = append(parts, tc.Dim.Render(dir))
+			parts = append(parts, theme.Dim().Render(dir))
 		}
 	}
 
-	sep := tc.Faint.Render("/")
-	return strings.Join(parts, sep) + sep + tc.Emphasis.Render(name)
+	sep := theme.Dim().Render("/")
+	return strings.Join(parts, sep) + sep + theme.Primary().Render(name)
 }
 
 // colorSkillPathBold is like colorSkillPath but renders the skill name in bold
 // for extra prominence in the detail panel header.
 func colorSkillPathBold(path string) string {
 	segments := strings.Split(path, "/")
-	boldName := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
+	boldName := theme.Primary().Bold(true)
 	if len(segments) <= 1 {
 		return boldName.Render(path)
 	}
@@ -304,13 +306,13 @@ func colorSkillPathBold(path string) string {
 	var parts []string
 	for idx, dir := range dirs {
 		if idx == 0 {
-			parts = append(parts, tc.Cyan.Render(dir))
+			parts = append(parts, theme.Accent().Render(dir))
 		} else {
-			parts = append(parts, tc.Dim.Render(dir))
+			parts = append(parts, theme.Dim().Render(dir))
 		}
 	}
 
-	sep := tc.Faint.Render("/")
+	sep := theme.Dim().Render("/")
 	return strings.Join(parts, sep) + sep + boldName.Render(name)
 }
 

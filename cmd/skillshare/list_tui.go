@@ -9,6 +9,7 @@ import (
 
 	"skillshare/internal/config"
 	"skillshare/internal/skillignore"
+	"skillshare/internal/theme"
 	"skillshare/internal/utils"
 
 	"github.com/charmbracelet/bubbles/list"
@@ -34,9 +35,9 @@ const (
 
 // applyTUIFilterStyle sets filter prompt, cursor, and input cursor to the shared style.
 func applyTUIFilterStyle(l *list.Model) {
-	l.Styles.FilterPrompt = tc.Filter
-	l.Styles.FilterCursor = tc.Filter
-	l.FilterInput.Cursor.Style = tc.Filter
+	l.Styles.FilterPrompt = theme.Accent()
+	l.Styles.FilterCursor = theme.Accent()
+	l.FilterInput.Cursor.Style = theme.Accent()
 }
 
 // listLoadResult holds the result of async skill loading inside the TUI.
@@ -152,7 +153,7 @@ func newListTUIModel(loadFn listLoadFn, skills []skillItem, totalCount int, mode
 	// Create list model — built-in filter DISABLED; we manage our own.
 	l := list.New(items, delegate, 0, 0)
 	l.Title = fmt.Sprintf("Installed skills (%s)", modeLabel)
-	l.Styles.Title = tc.ListTitle
+	l.Styles.Title = theme.Title()
 	l.Styles.NoItems = l.Styles.NoItems.PaddingLeft(2) // align with title
 	l.SetShowStatusBar(false)                          // we render our own status with real total count
 	l.SetFilteringEnabled(false)                       // application-level filter replaces built-in
@@ -162,13 +163,13 @@ func newListTUIModel(loadFn listLoadFn, skills []skillItem, totalCount int, mode
 	// Loading spinner
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
-	sp.Style = tc.SpinnerStyle
+	sp.Style = theme.Accent()
 
 	// Filter text input
 	fi := textinput.New()
 	fi.Prompt = "/ "
-	fi.PromptStyle = tc.Filter
-	fi.Cursor.Style = tc.Filter
+	fi.PromptStyle = theme.Accent()
+	fi.Cursor.Style = theme.Accent()
 	fi.Placeholder = "filter or t:tracked g:group r:repo k:kind"
 
 	m := listTUIModel{
@@ -585,7 +586,7 @@ func (m listTUIModel) View() string {
 		cmd := fmt.Sprintf("skillshare %s %s%s %s", m.confirmAction, kindArg, flag, m.confirmSkill)
 		if m.confirmAction == "uninstall" {
 			return fmt.Sprintf("\n  %s\n\n  → %s\n\n  Proceed? [Y/n] ",
-				tc.Red.Render("Uninstall "+m.confirmSkill+"?"), cmd)
+				theme.Danger().Render("Uninstall "+m.confirmSkill+"?"), cmd)
 		}
 		return fmt.Sprintf("\n  → %s\n\n  Proceed? [Y/n] ", cmd)
 	}
@@ -610,13 +611,13 @@ func (m listTUIModel) renderTabBar() string {
 	}
 
 	activeStyle := lipgloss.NewStyle().Bold(true).Underline(true)
-	inactiveStyle := tc.Dim
+	inactiveStyle := theme.Dim()
 
 	var parts []string
 	for _, t := range tabs {
 		label := fmt.Sprintf("%s(%d)", t.label, t.count)
 		if t.tab == m.activeTab {
-			parts = append(parts, activeStyle.Inherit(tc.Cyan).Render(label))
+			parts = append(parts, activeStyle.Inherit(theme.Accent()).Render(label))
 		} else {
 			parts = append(parts, inactiveStyle.Render(label))
 		}
@@ -788,12 +789,12 @@ func (m listTUIModel) renderSummaryFooter() string {
 	}
 
 	parts := []string{
-		tc.Emphasis.Render(formatNumber(m.matchCount)) + tc.Dim.Render("/") + tc.Dim.Render(formatNumber(len(m.tabFiltered))) + tc.Dim.Render(" visible"),
-		tc.Cyan.Render(formatNumber(localCount)) + tc.Dim.Render(" local"),
-		tc.Green.Render(formatNumber(trackedCount)) + tc.Dim.Render(" tracked"),
-		tc.Yellow.Render(formatNumber(remoteCount)) + tc.Dim.Render(" remote"),
+		theme.Primary().Render(formatNumber(m.matchCount)) + theme.Dim().Render("/") + theme.Dim().Render(formatNumber(len(m.tabFiltered))) + theme.Dim().Render(" visible"),
+		theme.Accent().Render(formatNumber(localCount)) + theme.Dim().Render(" local"),
+		theme.Success().Render(formatNumber(trackedCount)) + theme.Dim().Render(" tracked"),
+		theme.Warning().Render(formatNumber(remoteCount)) + theme.Dim().Render(" remote"),
 	}
-	return tc.Help.Render(strings.Join(parts, tc.Dim.Render(" | "))) + "\n"
+	return theme.Dim().MarginLeft(2).Render(strings.Join(parts, theme.Dim().Render(" | "))) + "\n"
 }
 
 // renderTUIFilterBar renders a unified filter + status line shared by all TUIs.
@@ -802,14 +803,14 @@ func renderTUIFilterBar(inputView string, filtering bool, filterText string, mat
 	if filtering {
 		if filterText == "" {
 			status := fmt.Sprintf("  %s %s%s", formatNumber(totalCount), noun, pageInfo)
-			return "  " + inputView + tc.Help.Render(status) + "\n"
+			return "  " + inputView + theme.Dim().MarginLeft(2).Render(status) + "\n"
 		}
 		status := fmt.Sprintf("  %s/%s %s", formatNumber(matchCount), formatNumber(totalCount), noun)
 		if maxShown > 0 && matchCount > maxShown {
 			status += fmt.Sprintf(" (first %s shown)", formatNumber(maxShown))
 		}
 		status += pageInfo
-		return "  " + inputView + tc.Help.Render(status) + "\n"
+		return "  " + inputView + theme.Dim().MarginLeft(2).Render(status) + "\n"
 	}
 	if filterText != "" {
 		status := fmt.Sprintf("filter: %s — %s/%s %s", filterText, formatNumber(matchCount), formatNumber(totalCount), noun)
@@ -817,9 +818,9 @@ func renderTUIFilterBar(inputView string, filtering bool, filterText string, mat
 			status += fmt.Sprintf(" (first %s shown)", formatNumber(maxShown))
 		}
 		status += pageInfo
-		return tc.Help.Render(status) + "\n"
+		return theme.Dim().MarginLeft(2).Render(status) + "\n"
 	}
-	return tc.Help.Render(fmt.Sprintf("%s %s%s", formatNumber(totalCount), noun, pageInfo)) + "\n"
+	return theme.Dim().MarginLeft(2).Render(fmt.Sprintf("%s %s%s", formatNumber(totalCount), noun, pageInfo)) + "\n"
 }
 
 // renderPageInfo returns page indicator like " · Page 2 of 4,729" or "" if single page.
@@ -910,7 +911,7 @@ func renderDetailGroup(title string, rows []string, _ int) string {
 	}
 
 	var b strings.Builder
-	b.WriteString(tc.Title.Render(title))
+	b.WriteString(theme.Title().Render(title))
 	b.WriteString("\n")
 	for _, r := range filtered {
 		b.WriteString("  ")
@@ -928,7 +929,7 @@ func renderDetailCard(title string, body string, width int) string {
 	if title == "" {
 		return style.Render(body)
 	}
-	return style.Render(tc.Title.Render(title) + "\n" + body)
+	return style.Render(theme.Title().Render(title) + "\n" + body)
 }
 
 func renderDetailSection(title string, body string, width int) string {
@@ -936,7 +937,7 @@ func renderDetailSection(title string, body string, width int) string {
 		Width(width).
 		Align(lipgloss.Left).
 		Padding(0, 0)
-	return style.Render(tc.Title.Render(title) + "\n" + body)
+	return style.Render(theme.Title().Render(title) + "\n" + body)
 }
 
 // renderDetailBody renders the scrollable detail body for the selected skill.
@@ -967,22 +968,22 @@ func (m listTUIModel) renderDetailBody(e skillEntry, d *detailData, width int) s
 	// Source section (Installed date and Synced-to targets are in the header)
 	var sourceRows []string
 	if e.Source != "" {
-		sourceRows = append(sourceRows, renderFactRow("Source", tc.Cyan.Render(e.Source)))
+		sourceRows = append(sourceRows, renderFactRow("Source", theme.Accent().Render(e.Source)))
 	} else if e.RepoName != "" {
 		sourceRows = append(sourceRows, renderFactRow("Repo", e.RepoName))
 	}
 	if e.Branch != "" {
-		sourceRows = append(sourceRows, renderFactRow("Branch", tc.Cyan.Render(e.Branch)))
+		sourceRows = append(sourceRows, renderFactRow("Branch", theme.Accent().Render(e.Branch)))
 	}
 	if d.License != "" {
-		sourceRows = append(sourceRows, renderFactRow("License", tc.Green.Bold(true).Render(d.License)))
+		sourceRows = append(sourceRows, renderFactRow("License", theme.Success().Bold(true).Render(d.License)))
 	}
 	if len(d.Files) > 0 {
 		fileLabel := fmt.Sprintf("Files (%d)", len(d.Files))
-		sourceRows = append(sourceRows, renderFactRow(fileLabel, tc.Cyan.Render(strings.Join(d.Files, " · "))))
+		sourceRows = append(sourceRows, renderFactRow(fileLabel, theme.Accent().Render(strings.Join(d.Files, " · "))))
 	}
 	if len(d.SyncedTargets) > 0 {
-		sourceRows = append(sourceRows, renderFactRow("Synced to", tc.Cyan.Render(strings.Join(d.SyncedTargets, ", "))))
+		sourceRows = append(sourceRows, renderFactRow("Synced to", theme.Accent().Render(strings.Join(d.SyncedTargets, ", "))))
 	}
 	if len(sourceRows) > 0 {
 		b.WriteString(renderDetailSection("Details", strings.Join(sourceRows, "\n"), cardWidth))
@@ -1003,13 +1004,13 @@ func renderDetailHeader(e skillEntry, d *detailData, width int) string {
 	var metaParts []string
 	metaParts = append(metaParts, detailStatusBits(e))
 	if e.InstalledAt != "" {
-		metaParts = append(metaParts, tc.Dim.Render(e.InstalledAt))
+		metaParts = append(metaParts, theme.Dim().Render(e.InstalledAt))
 	}
 	if len(d.SyncedTargets) > 0 {
-		metaParts = append(metaParts, tc.Cyan.Render(fmt.Sprintf("%d target(s)", len(d.SyncedTargets))))
+		metaParts = append(metaParts, theme.Accent().Render(fmt.Sprintf("%d target(s)", len(d.SyncedTargets))))
 	}
 	body.WriteString("\n\n")
-	body.WriteString(strings.Join(metaParts, tc.Dim.Render("  ·  ")))
+	body.WriteString(strings.Join(metaParts, theme.Dim().Render("  ·  ")))
 
 	return renderDetailCard("", body.String(), width)
 }
@@ -1017,7 +1018,7 @@ func renderDetailHeader(e skillEntry, d *detailData, width int) string {
 func renderDetailParagraph(lines []string) []string {
 	rendered := make([]string, 0, len(lines))
 	for _, line := range lines {
-		rendered = append(rendered, tc.Value.Render(line))
+		rendered = append(rendered, lipgloss.NewStyle().Render(line))
 	}
 	return rendered
 }
@@ -1027,28 +1028,28 @@ func detailStatusBits(e skillEntry) string {
 
 	// Kind label (Agent / Skill)
 	if e.Kind == "agent" {
-		bits = append(bits, tc.Cyan.Render("Agent"))
+		bits = append(bits, theme.Accent().Render("Agent"))
 	} else {
-		bits = append(bits, tc.Cyan.Render("Skill"))
+		bits = append(bits, theme.Accent().Render("Skill"))
 	}
 
 	switch {
 	case e.RepoName != "":
-		bits = append(bits, tc.Green.Render("tracked"))
+		bits = append(bits, theme.Success().Render("tracked"))
 	case e.Source != "":
-		bits = append(bits, tc.Yellow.Render("remote"))
+		bits = append(bits, theme.Warning().Render("remote"))
 	default:
-		bits = append(bits, tc.Dim.Render("local"))
+		bits = append(bits, theme.Dim().Render("local"))
 	}
 	if e.Disabled {
-		bits = append(bits, tc.Red.Render("disabled"))
+		bits = append(bits, theme.Danger().Render("disabled"))
 	}
 	return strings.Join(bits, "  ")
 }
 
 func renderFactRow(label, value string) string {
 	labelStyle := lipgloss.NewStyle().Faint(true).Width(12)
-	return labelStyle.Render(label+":") + " " + tc.Value.Render(value)
+	return labelStyle.Render(label+":") + " " + lipgloss.NewStyle().Render(value)
 }
 
 // listSkillFiles returns visible file names in the skill directory.
