@@ -9,6 +9,21 @@ All notable changes to skillshare are documented here. For the full commit histo
 
 ---
 
+## [0.19.2] - 2026-04-14
+
+### New Features
+
+- **Local agent count in Targets** — the Targets page and `skillshare target --json` now show how many local (non-source) agents exist per target alongside the linked/expected counts. The Collect button appears for targets with local agents and routes directly to the Collect page with the correct scope pre-selected
+  ```bash
+  skillshare target --json   # agentLocalCount field in each target
+  ```
+
+### Bug Fixes
+
+- Fixed batch uninstall for agents — selecting multiple agents from the same tracked repo on the Uninstall page sent only the repo name instead of individual agent names, causing all uninstalls to fail with "agent not found". The confirmation dialog now correctly lists each agent and the API receives individual names
+- Fixed empty state messages on the Resources and Uninstall pages — switching to the Agents tab with no agents installed now shows "No agents installed" instead of the generic "No skills installed" text
+- Fixed Health Check theme display — the Theme check on the Web UI always showed a warning with technical internals (`fallback-dark-no-tty`, `no_color: false`) that users couldn't understand. Now the CLI and UI both show human-readable messages like "auto-detected from terminal" or "set via SKILLSHARE_THEME", and the UI no longer shows a false warning caused by the server subprocess lacking a terminal
+
 ## [0.19.1] - 2026-04-13
 
 ### Bug Fixes

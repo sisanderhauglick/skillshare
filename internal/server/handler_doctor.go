@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+
+	"skillshare/internal/theme"
 )
 
 func (s *Server) handleDoctor(w http.ResponseWriter, r *http.Request) {
@@ -29,7 +31,15 @@ func (s *Server) handleDoctor(w http.ResponseWriter, r *http.Request) {
 		cmd.Dir = s.projectRoot
 	}
 
-	cmd.Env = append(os.Environ(), "SKILLSHARE_CONFIG="+s.configPath())
+	// Forward the server's resolved theme so the subprocess doesn't
+	// fall back to "no-TTY" warning (it has no terminal). Uses an
+	// internal env var so doctor reports "auto-detected", not "set via
+	// SKILLSHARE_THEME" — the user didn't set anything.
+	tm := theme.Get()
+	cmd.Env = append(os.Environ(),
+		"SKILLSHARE_CONFIG="+s.configPath(),
+		"_SKILLSHARE_THEME_FORWARDED="+string(tm.Mode),
+	)
 
 	output, err := cmd.Output()
 	if err != nil {

@@ -378,16 +378,34 @@ func checkTheme(result *doctorResult) {
 		status = checkInfo
 	}
 
-	msg := fmt.Sprintf("Theme: %s (%s)", tm.Mode, tm.Source)
-	if tm.NoColor {
-		msg = "Theme: no-color mode"
+	// Build user-friendly message based on how the theme was resolved.
+	var msg string
+	switch {
+	case tm.NoColor:
+		msg = "Theme: colors disabled (NO_COLOR is set)"
+	case tm.Source == "env":
+		msg = fmt.Sprintf("Theme: %s (set via SKILLSHARE_THEME)", tm.Mode)
+	case tm.Source == "detected":
+		msg = fmt.Sprintf("Theme: %s (auto-detected from terminal)", tm.Mode)
+	case tm.Source == "fallback-dark-no-tty":
+		msg = fmt.Sprintf("Theme: %s (non-interactive terminal, defaulted to dark)", tm.Mode)
+	case tm.Source == "fallback-dark-probe-failed":
+		msg = fmt.Sprintf("Theme: %s (terminal detection failed, defaulted to dark)", tm.Mode)
+	default:
+		msg = fmt.Sprintf("Theme: %s", tm.Mode)
 	}
 
-	details := []string{
-		fmt.Sprintf("source: %s", tm.Source),
-		fmt.Sprintf("override: SKILLSHARE_THEME=%s", envOrDefault("SKILLSHARE_THEME", "auto")),
-		fmt.Sprintf("no_color: %v", tm.NoColor),
-		fmt.Sprintf("term: %s", envOrDefault("TERM", "(unset)")),
+	// Details: actionable guidance only, not raw internals.
+	var details []string
+	envVal := envOrDefault("SKILLSHARE_THEME", "")
+	if envVal != "" {
+		details = append(details, fmt.Sprintf("SKILLSHARE_THEME is set to \"%s\"", envVal))
+	}
+	if status == checkWarning {
+		details = append(details, "Tip: set SKILLSHARE_THEME=light or SKILLSHARE_THEME=dark to choose your theme")
+	}
+	if tm.NoColor {
+		details = append(details, "Unset NO_COLOR to re-enable colors")
 	}
 
 	switch status {
@@ -395,9 +413,6 @@ func checkTheme(result *doctorResult) {
 		ui.Success(msg)
 	case checkWarning:
 		ui.Warning(msg)
-		if tm.Source == "fallback-dark-probe-failed" {
-			ui.Info("  Tip: set SKILLSHARE_THEME=light or SKILLSHARE_THEME=dark for best colors")
-		}
 	default:
 		ui.Info(msg)
 	}

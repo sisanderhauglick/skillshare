@@ -43,6 +43,16 @@ func resolve() *Theme {
 	}
 	// "", "auto", or unknown values fall through to detection.
 
+	// 3b. Server-forwarded detection — the server already detected theme
+	// from its TTY and passes the result so subprocess doesn't need a TTY.
+	// Source is "detected" (not "env") because the user didn't set this.
+	switch os.Getenv("_SKILLSHARE_THEME_FORWARDED") {
+	case "light":
+		return &Theme{Mode: ModeLight, Source: "detected", palette: lightPalette}
+	case "dark":
+		return &Theme{Mode: ModeDark, Source: "detected", palette: darkPalette}
+	}
+
 	// 4. Auto detection gate
 	if !canDetect() {
 		return &Theme{

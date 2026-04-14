@@ -40,6 +40,7 @@ const checkLabels: Record<string, string> = {
   backup: 'Backups',
   trash: 'Trash',
   agents_source: 'Agents Source',
+  theme: 'Theme',
   cli_version: 'CLI Version',
   skill_version: 'Skill Version',
   skillignore: 'Skillignore',
