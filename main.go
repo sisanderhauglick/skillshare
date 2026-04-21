@@ -19,14 +19,8 @@ func main() {
 		log.Println("No .env file found, using environment variables")
 	}
 
-	port := getEnv("PORT", "8080")
-	host := getEnv("HOST", "0.0.0.0")
-
-	// Set up the HTTP server
-	mux := http.NewServeMux()
-	registerRoutes(mux)
-
-	server := &http.Server{
+	port := getEnv("PORT", "3000")
+	host :=Server{
 		Addr:         fmt.Sprintf("%s:%s", host, port),
 		Handler:      mux,
 		ReadTimeout:  15 * time.Second,
